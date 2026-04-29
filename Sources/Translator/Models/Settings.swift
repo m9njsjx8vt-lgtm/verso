@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-final class Settings: ObservableObject {
+final class AppSettings: ObservableObject {
     @Published var apiKey: String {
         didSet { KeychainService.set(apiKey, forKey: "geminiApiKey") }
     }

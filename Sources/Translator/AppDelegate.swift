@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let settings = Settings()
+    let settings = AppSettings()
     private var statusItem: NSStatusItem?
     private var hotkeyMonitor: HotkeyMonitor?
     private var popupController: PopupController?

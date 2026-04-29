@@ -3,13 +3,13 @@ import SwiftUI
 
 @MainActor
 final class PopupController {
-    private let settings: Settings
+    private let settings: AppSettings
     private let client = GeminiClient()
     private var window: PopupWindow?
     private var sourceApp: NSRunningApplication?
     private var currentTaskId: Int = 0
 
-    init(settings: Settings) {
+    init(settings: AppSettings) {
         self.settings = settings
     }
 

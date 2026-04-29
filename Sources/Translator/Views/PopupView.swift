@@ -196,7 +196,7 @@ struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(configuration.isPressed
-                ? Color(NSColor.tertiarySystemFill)
+                ? Color.gray.opacity(0.2)
                 : Color(NSColor.controlBackgroundColor))
             .foregroundColor(.primary)
             .cornerRadius(8)

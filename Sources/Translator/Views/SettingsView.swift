@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @EnvironmentObject var settings: Settings
+    @EnvironmentObject var settings: AppSettings
     @State private var showApiKey: Bool = false
 
     var body: some View {
@@ -111,7 +111,7 @@ struct SettingsView: View {
             HStack {
                 Spacer()
                 Button("Reset to default") {
-                    settings.translatorContext = Settings.defaultContext
+                    settings.translatorContext = AppSettings.defaultContext
                 }
                 .controlSize(.small)
             }
