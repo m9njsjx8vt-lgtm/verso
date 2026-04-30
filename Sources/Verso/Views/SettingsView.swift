@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var glossary: Glossary
     @State private var showApiKey: Bool = false
 
     var body: some View {
@@ -12,10 +13,13 @@ struct SettingsView: View {
             contextTab
                 .tabItem { Label("Personalization", systemImage: "person.text.rectangle") }
 
+            GlossaryView(glossary: glossary)
+                .tabItem { Label("Glossary", systemImage: "book") }
+
             aboutTab
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 620, height: 520)
+        .frame(width: 640, height: 540)
         .padding(20)
     }
 
@@ -62,6 +66,24 @@ struct SettingsView: View {
                 Divider()
 
                 Group {
+                    Text("Hotkeys")
+                        .font(.headline)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("⌘C × 2").font(.system(.body, design: .monospaced))
+                            Text("→ 選択テキストを翻訳").foregroundColor(.secondary)
+                        }
+                        HStack {
+                            Text("⌥⇧C").font(.system(.body, design: .monospaced))
+                            Text("→ 画面領域をOCRして翻訳").foregroundColor(.secondary)
+                        }
+                    }
+                    .font(.system(size: 13))
+                }
+
+                Divider()
+
+                Group {
                     Text("Permissions")
                         .font(.headline)
                     HStack {
@@ -70,8 +92,8 @@ struct SettingsView: View {
                             : "exclamationmark.circle.fill")
                             .foregroundColor(AccessibilityService.isTrusted() ? .green : .orange)
                         Text(AccessibilityService.isTrusted()
-                            ? "Accessibility OK — ⌘C×2 detection works"
-                            : "Accessibility not granted — ⌘C×2 won't work")
+                            ? "Accessibility OK — ホットキー検出可能"
+                            : "Accessibility 未許可 — ホットキーが効きません")
                         Spacer()
                         if !AccessibilityService.isTrusted() {
                             Button("Open Settings") {
@@ -80,6 +102,10 @@ struct SettingsView: View {
                         }
                     }
                     .font(.system(size: 13))
+
+                    Text("OCR (⌥⇧C) は初回実行時に Screen Recording 権限を要求します。")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
 
                 Spacer()
@@ -94,7 +120,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Translator Context")
                 .font(.headline)
-            Text("This text is injected into every translation prompt. Teach the translator your tone, glossary, and proper nouns.")
+            Text("プロンプトに毎回注入されるあなた専用のコンテキスト。トーン、ロールプレイ、業界の前提を書く。固有名詞や具体的な訳語は Glossary タブへ。")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
@@ -132,12 +158,15 @@ struct SettingsView: View {
             Text("Personal AI translation, on every page")
                 .font(.callout)
                 .foregroundColor(.secondary)
-            Text("v0.1.0")
+            Text("v0.2.0")
                 .foregroundColor(.secondary)
                 .padding(.top, 4)
-            Text("⌘C×2 で日英翻訳ポップアップ")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            VStack(spacing: 4) {
+                Text("⌘C×2  →  選択テキスト翻訳")
+                Text("⌥⇧C  →  画面領域OCR翻訳")
+            }
+            .font(.caption)
+            .foregroundColor(.secondary)
             Spacer()
         }
         .padding()

@@ -25,12 +25,13 @@ targets:
       properties:
         LSUIElement: true
         LSMinimumSystemVersion: "13.0"
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.2.0"
+        CFBundleVersion: "2"
         CFBundleDisplayName: Verso
         CFBundleIconFile: AppIcon
         NSHighResolutionCapable: true
         NSAppleEventsUsageDescription: "Verso pastes translated text into your active application using keyboard events."
+        NSScreenCaptureUsageDescription: "Verso captures the area you select to OCR and translate the text in it."
         NSHumanReadableCopyright: "© 2026 Tomoro Iwasaki"
     entitlements:
       path: Sources/Verso/Verso.entitlements

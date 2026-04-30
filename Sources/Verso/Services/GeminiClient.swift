@@ -24,17 +24,53 @@ enum GeminiError: LocalizedError {
 final class GeminiClient {
     private let timeout: TimeInterval = 12
 
+    // MARK: - Translate
+
     func translate(
         text: String,
         from: String,
         to: String,
         context: String?,
+        glossary: String?,
         model: String,
         apiKey: String
     ) async throws -> String {
-        guard !apiKey.isEmpty else { throw GeminiError.missingApiKey }
+        let prompt = Self.buildTranslatePrompt(
+            text: text, from: from, to: to,
+            context: context, glossary: glossary
+        )
+        return try await call(prompt: prompt, model: model, apiKey: apiKey)
+    }
 
-        let prompt = Self.buildPrompt(text: text, from: from, to: to, context: context)
+    // MARK: - Refine
+
+    /// Re-translate the existing translation according to a refinement instruction.
+    /// (e.g. "make it shorter", "more casual"). Keeps the same source text as ground truth.
+    func refine(
+        originalText: String,
+        currentTranslation: String,
+        instruction: String,
+        from: String,
+        to: String,
+        context: String?,
+        glossary: String?,
+        model: String,
+        apiKey: String
+    ) async throws -> String {
+        let prompt = Self.buildRefinePrompt(
+            originalText: originalText,
+            currentTranslation: currentTranslation,
+            instruction: instruction,
+            from: from, to: to,
+            context: context, glossary: glossary
+        )
+        return try await call(prompt: prompt, model: model, apiKey: apiKey)
+    }
+
+    // MARK: - Internals
+
+    private func call(prompt: String, model: String, apiKey: String) async throws -> String {
+        guard !apiKey.isEmpty else { throw GeminiError.missingApiKey }
 
         guard let url = URL(string:
             "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
@@ -65,7 +101,6 @@ final class GeminiClient {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw GeminiError.invalidResponse
         }
-
         guard httpResponse.statusCode == 200 else {
             let errBody = String(data: data, encoding: .utf8) ?? ""
             throw GeminiError.httpError(httpResponse.statusCode, errBody)
@@ -78,35 +113,71 @@ final class GeminiClient {
             let content = first["content"] as? [String: Any],
             let parts = content["parts"] as? [[String: Any]],
             let firstPart = parts.first,
-            let translation = firstPart["text"] as? String
+            let textOut = firstPart["text"] as? String
         else {
             throw GeminiError.invalidResponse
         }
 
-        return translation.trimmingCharacters(in: .whitespacesAndNewlines)
+        return textOut.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func buildPrompt(text: String, from: String, to: String, context: String?) -> String {
-        if let ctx = context?.trimmingCharacters(in: .whitespacesAndNewlines), !ctx.isEmpty {
-            return """
-            You are a personal translator for a specific user. Read the user context below and translate so the result sounds like *that user* wrote it — match their tone, terminology, and proper-noun conventions.
+    // MARK: - Prompt builders
 
-            ## USER CONTEXT
-            \(ctx)
+    private static func buildTranslatePrompt(
+        text: String, from: String, to: String,
+        context: String?, glossary: String?
+    ) -> String {
+        let ctxBlock = nonEmptyBlock(title: "USER CONTEXT", body: context)
+        let gloBlock = nonEmptyBlock(title: "GLOSSARY (use these specific translations consistently)",
+                                     body: glossary)
 
-            ## TASK
-            Translate the following \(from) text into natural, fluent \(to). Apply the user's tone, glossary, and style rules from the context. Output ONLY the translation — no quotes, no explanations, no labels, no notes.
+        let intro = ctxBlock.isEmpty && gloBlock.isEmpty
+            ? "You are a professional translator."
+            : "You are a personal translator for a specific user. Use the user context and glossary below so the result sounds like *that user* wrote it."
 
-            ---
-            \(text)
-            """
-        } else {
-            return """
-            You are a professional translator. Translate the following \(from) text into natural, fluent \(to). Preserve tone, register, and any technical terminology. Output ONLY the translation — no quotes, no explanations, no labels.
+        return """
+        \(intro)
+        \(ctxBlock)\(gloBlock)
+        ## TASK
+        Translate the following \(from) text into natural, fluent \(to). \
+        Match the user's tone, terminology, and proper-noun conventions. \
+        Output ONLY the translation — no quotes, no explanations, no labels, no notes.
 
-            ---
-            \(text)
-            """
+        ---
+        \(text)
+        """
+    }
+
+    private static func buildRefinePrompt(
+        originalText: String, currentTranslation: String, instruction: String,
+        from: String, to: String,
+        context: String?, glossary: String?
+    ) -> String {
+        let ctxBlock = nonEmptyBlock(title: "USER CONTEXT", body: context)
+        let gloBlock = nonEmptyBlock(title: "GLOSSARY", body: glossary)
+
+        return """
+        You are a personal translator. The user wants you to refine an existing translation.
+        \(ctxBlock)\(gloBlock)
+        ## ORIGINAL (\(from))
+        \(originalText)
+
+        ## CURRENT TRANSLATION (\(to))
+        \(currentTranslation)
+
+        ## REFINEMENT REQUEST
+        \(instruction)
+
+        Output ONLY the refined translation in \(to). \
+        Preserve the meaning of the original. \
+        No quotes, no explanations, no labels.
+        """
+    }
+
+    private static func nonEmptyBlock(title: String, body: String?) -> String {
+        guard let body = body?.trimmingCharacters(in: .whitespacesAndNewlines), !body.isEmpty else {
+            return ""
         }
+        return "\n## \(title)\n\(body)\n"
     }
 }

@@ -8,6 +8,7 @@ struct TranslatorApp: App {
         Settings {
             SettingsView()
                 .environmentObject(appDelegate.settings)
+                .environmentObject(appDelegate.glossary)
         }
     }
 }

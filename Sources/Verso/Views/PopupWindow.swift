@@ -7,7 +7,7 @@ final class PopupWindow: NSPanel {
     init(rootView: PopupView, onResignKey: @escaping () -> Void) {
         self.onResignKey = onResignKey
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 380),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 460),
             styleMask: [.titled, .closable, .utilityWindow],
             backing: .buffered,
             defer: false

@@ -4,13 +4,18 @@ import SwiftUI
 @MainActor
 final class PopupController {
     private let settings: AppSettings
+    private let glossary: Glossary
     private let client = GeminiClient()
     private var window: PopupWindow?
     private var sourceApp: NSRunningApplication?
     private var currentTaskId: Int = 0
+    private var currentViewModel: PopupViewModel?
+    private var currentFromFull: String = ""
+    private var currentToFull: String = ""
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, glossary: Glossary) {
         self.settings = settings
+        self.glossary = glossary
     }
 
     func show(originalText: String) {
@@ -22,6 +27,8 @@ final class PopupController {
         let toShort = isJa ? "EN" : "JA"
         let fromFull = isJa ? "Japanese" : "English"
         let toFull = isJa ? "English" : "Japanese"
+        currentFromFull = fromFull
+        currentToFull = toFull
 
         // Close any existing popup
         close(restoreFocus: false)
@@ -41,8 +48,19 @@ final class PopupController {
             },
             onClose: { [weak self] in
                 self?.close(restoreFocus: true)
+            },
+            onRefine: { [weak self] instruction in
+                self?.refine(instruction: instruction)
+            },
+            onAddGlossary: { [weak self] term, translation, preserve in
+                self?.glossary.add(
+                    term: term,
+                    translation: translation,
+                    preserveAsIs: preserve
+                )
             }
         )
+        currentViewModel = viewModel
 
         let popup = PopupWindow(
             rootView: PopupView(viewModel: viewModel),
@@ -64,6 +82,7 @@ final class PopupController {
                     from: fromFull,
                     to: toFull,
                     context: settings.translatorContext,
+                    glossary: glossary.formattedForPrompt(),
                     model: settings.model,
                     apiKey: settings.apiKey
                 )
@@ -77,6 +96,36 @@ final class PopupController {
         }
     }
 
+    private func refine(instruction: String) {
+        guard let vm = currentViewModel, case .ok = vm.state else { return }
+        let snapshotTranslation = vm.translation
+        vm.isRefining = true
+        currentTaskId += 1
+        let taskId = currentTaskId
+        Task { @MainActor in
+            do {
+                let refined = try await client.refine(
+                    originalText: vm.originalText,
+                    currentTranslation: snapshotTranslation,
+                    instruction: instruction,
+                    from: currentFromFull,
+                    to: currentToFull,
+                    context: settings.translatorContext,
+                    glossary: glossary.formattedForPrompt(),
+                    model: settings.model,
+                    apiKey: settings.apiKey
+                )
+                guard taskId == self.currentTaskId else { return }
+                vm.translation = refined
+                vm.isRefining = false
+            } catch {
+                guard taskId == self.currentTaskId else { return }
+                vm.state = .error(error.localizedDescription)
+                vm.isRefining = false
+            }
+        }
+    }
+
     private func insertAndClose(_ translation: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(translation, forType: .string)
@@ -85,6 +134,7 @@ final class PopupController {
         // Tear down the popup WITHOUT restoring focus — we want to focus sourceApp
         window?.orderOut(nil)
         window = nil
+        currentViewModel = nil
 
         if let app = app {
             app.activate()
@@ -98,6 +148,7 @@ final class PopupController {
         let app = sourceApp
         window?.orderOut(nil)
         window = nil
+        currentViewModel = nil
         if restoreFocus, let app = app {
             app.activate()
         }

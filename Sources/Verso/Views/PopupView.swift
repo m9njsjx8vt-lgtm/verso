@@ -11,6 +11,7 @@ final class PopupViewModel: ObservableObject {
     @Published var originalText: String
     @Published var translation: String = ""
     @Published var state: State = .loading
+    @Published var isRefining: Bool = false
 
     let fromLang: String
     let toLang: String
@@ -18,6 +19,8 @@ final class PopupViewModel: ObservableObject {
     let onInsert: (String) -> Void
     let onCopy: (String) -> Void
     let onClose: () -> Void
+    let onRefine: (String) -> Void
+    let onAddGlossary: (String, String, Bool) -> Void  // term, translation, preserveAsIs
 
     init(
         originalText: String,
@@ -25,7 +28,9 @@ final class PopupViewModel: ObservableObject {
         toLang: String,
         onInsert: @escaping (String) -> Void,
         onCopy: @escaping (String) -> Void,
-        onClose: @escaping () -> Void
+        onClose: @escaping () -> Void,
+        onRefine: @escaping (String) -> Void,
+        onAddGlossary: @escaping (String, String, Bool) -> Void
     ) {
         self.originalText = originalText
         self.fromLang = fromLang
@@ -33,6 +38,8 @@ final class PopupViewModel: ObservableObject {
         self.onInsert = onInsert
         self.onCopy = onCopy
         self.onClose = onClose
+        self.onRefine = onRefine
+        self.onAddGlossary = onAddGlossary
     }
 
     var isOk: Bool {
@@ -43,6 +50,11 @@ final class PopupViewModel: ObservableObject {
 
 struct PopupView: View {
     @ObservedObject var viewModel: PopupViewModel
+
+    @State private var showGlossaryPopover = false
+    @State private var newTerm: String = ""
+    @State private var newTrans: String = ""
+    @State private var newPreserve: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -67,7 +79,7 @@ struct PopupView: View {
                     .padding(12)
                     .textSelection(.enabled)
             }
-            .frame(maxHeight: 110)
+            .frame(maxHeight: 100)
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(10)
             .overlay(
@@ -84,6 +96,11 @@ struct PopupView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .strokeBorder(Color(NSColor.separatorColor), lineWidth: 1)
                 )
+
+            // Refine bar (only after a successful translation)
+            if viewModel.isOk {
+                refineBar
+            }
 
             // Actions
             HStack(spacing: 6) {
@@ -120,8 +137,90 @@ struct PopupView: View {
             }
         }
         .padding(14)
-        .frame(width: 540, height: 380)
+        .frame(width: 560, height: 460)
     }
+
+    // MARK: - Refine bar
+
+    private var refineBar: some View {
+        HStack(spacing: 6) {
+            if viewModel.isRefining {
+                ProgressView().controlSize(.small)
+            }
+            Button("🔁 短く") {
+                viewModel.onRefine("Make the translation shorter and more concise while preserving meaning.")
+            }
+            Button("🔁 砕け") {
+                viewModel.onRefine("Make the translation more casual and conversational.")
+            }
+            Button("🔁 丁寧") {
+                viewModel.onRefine("Make the translation more formal and polite.")
+            }
+            Button("🔁 別案") {
+                viewModel.onRefine("Provide an alternative translation with different word choices.")
+            }
+            Spacer()
+            Button("📚 用語追加") {
+                newTerm = ""
+                newTrans = ""
+                newPreserve = false
+                showGlossaryPopover = true
+            }
+            .popover(isPresented: $showGlossaryPopover, arrowEdge: .top) {
+                addGlossaryPopover
+            }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .font(.caption)
+        .disabled(viewModel.isRefining)
+    }
+
+    // MARK: - Add to glossary popover
+
+    private var addGlossaryPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Glossaryに追加")
+                .font(.headline)
+            Text("ここで登録した用語は今後すべての翻訳プロンプトに注入されます。")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Group {
+                Text("Term").font(.caption).foregroundColor(.secondary)
+                TextField("例: DXPP, EARTHBRAIN", text: $newTerm)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Toggle("Preserve as-is (固有名詞・訳さない)", isOn: $newPreserve)
+                .controlSize(.small)
+
+            if !newPreserve {
+                Group {
+                    Text("Translation").font(.caption).foregroundColor(.secondary)
+                    TextField("例: Digital Transformation Performance Platform", text: $newTrans)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+
+            HStack {
+                Button("キャンセル") { showGlossaryPopover = false }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("追加") {
+                    viewModel.onAddGlossary(newTerm, newTrans, newPreserve)
+                    showGlossaryPopover = false
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty
+                    || (!newPreserve && newTrans.trimmingCharacters(in: .whitespaces).isEmpty))
+            }
+        }
+        .padding(16)
+        .frame(width: 380)
+    }
+
+    // MARK: - Translation panel content
 
     @ViewBuilder
     private var translationPanel: some View {
