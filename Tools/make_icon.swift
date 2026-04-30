@@ -1,8 +1,8 @@
 #!/usr/bin/env swift
 
 // Generates a 1024×1024 PNG app icon: gradient squircle with a centered character.
-// Usage: swift make_icon.swift <output-png-path> [character]
-//   default character: 訳
+// Usage: swift make_icon.swift <output-png-path> [glyph] [font-name] [size]
+//   default: 訳, system heavy, 720pt
 
 import AppKit
 import Foundation
@@ -13,6 +13,19 @@ let outputPath = CommandLine.arguments.count > 1
 let glyph = CommandLine.arguments.count > 2
     ? CommandLine.arguments[2]
     : "訳"
+let fontName = CommandLine.arguments.count > 3
+    ? CommandLine.arguments[3]
+    : ""
+let pointSize: CGFloat = CommandLine.arguments.count > 4
+    ? CGFloat(Double(CommandLine.arguments[4]) ?? 720)
+    : 720
+
+let glyphFont: NSFont = {
+    if !fontName.isEmpty, let f = NSFont(name: fontName, size: pointSize) {
+        return f
+    }
+    return NSFont.systemFont(ofSize: pointSize, weight: .heavy)
+}()
 
 let size = NSSize(width: 1024, height: 1024)
 let img = NSImage(size: size)
@@ -82,7 +95,7 @@ shadow.shadowOffset = NSSize(width: 0, height: -8)
 shadow.shadowBlurRadius = 24
 
 let attrs: [NSAttributedString.Key: Any] = [
-    .font: NSFont.systemFont(ofSize: 720, weight: .heavy),
+    .font: glyphFont,
     .foregroundColor: NSColor.white,
     .paragraphStyle: para,
     .shadow: shadow,

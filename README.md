@@ -1,10 +1,10 @@
-# Tomo (友)
+# Verso
 
-Your translation companion. Select text → ⌘C twice → DeepL-style popup translates it via Gemini API.
+Personal AI translation, on every page. Select text → ⌘C twice → DeepL-style popup translates it via Gemini.
 
 Built to replace [Nani](https://nani.now) and DeepL with:
-- **No usage caps** (uses your own Gemini API key, free tier ≈ 1000 RPD on Flash-Lite)
-- **Personal context injection** — teach it your tone, glossary, and proper nouns
+- **No usage caps** — uses your own Gemini API key (free tier ≈ 1000 RPD on Flash-Lite)
+- **Personal context injection** — teach Verso your tone, glossary, and proper nouns
 - **Auto-dismissing popup** that disappears the moment you click anywhere else (DeepL behavior)
 
 ## Build & Run
@@ -12,16 +12,16 @@ Built to replace [Nani](https://nani.now) and DeepL with:
 ```bash
 brew install xcodegen           # one-time
 cd ~/Projects/Translator
-xcodegen                        # generates Tomo.xcodeproj
-xcodebuild -scheme Tomo -configuration Debug \
+xcodegen                        # generates Verso.xcodeproj
+xcodebuild -scheme Verso -configuration Debug \
   -destination 'platform=macOS' -derivedDataPath ./build build
-open ./build/Build/Products/Debug/Tomo.app
+open ./build/Build/Products/Debug/Verso.app
 ```
 
 Or open in Xcode:
 
 ```bash
-xcodegen && open Tomo.xcodeproj
+xcodegen && open Verso.xcodeproj
 ```
 
 ## First-time setup
@@ -29,7 +29,7 @@ xcodegen && open Tomo.xcodeproj
 1. Launch the app — a 🔤 icon appears in the menu bar
 2. Click the icon → **Settings…**
 3. Paste your Gemini API key (get one free at https://aistudio.google.com/apikey)
-4. (Optional) Customize the Personalization tab to teach Tomo your tone and glossary
+4. (Optional) Customize the Personalization tab to teach Verso your tone and glossary
 5. Grant **Accessibility** permission when prompted (required for ⌘C×2 detection)
 
 ## Use
@@ -44,13 +44,13 @@ xcodegen && open Tomo.xcodeproj
 ## Project structure
 
 ```
-Sources/Tomo/
+Sources/Verso/
 ├── TranslatorApp.swift         # @main, app entry
 ├── AppDelegate.swift           # Menu bar + lifecycle
 ├── Models/
 │   └── Settings.swift          # AppSettings: UserDefaults + Keychain
 ├── Services/
-│   ├── KeychainService.swift   # API key storage (com.tomoro.tomo)
+│   ├── KeychainService.swift   # API key storage (com.tomoro.verso)
 │   ├── AccessibilityService.swift
 │   ├── HotkeyMonitor.swift     # ⌘C×2 detection (NSEvent global monitor)
 │   ├── GeminiClient.swift      # Gemini API wrapper (URLSession + async/await)
@@ -69,7 +69,13 @@ Tools/
 ## Regenerate icon
 
 ```bash
-swift Tools/make_icon.swift /tmp/icon.png 友   # any single character
-Tools/build_icns.sh /tmp/icon.png Sources/Tomo/Resources/AppIcon.icns
-xcodegen && xcodebuild -scheme Tomo -configuration Debug -destination 'platform=macOS' -derivedDataPath ./build build
+# Default: Georgia-Bold serif "V" at 760pt (matches the Verso brand)
+swift Tools/make_icon.swift /tmp/icon.png V "Georgia-Bold" 760
+Tools/build_icns.sh /tmp/icon.png Sources/Verso/Resources/AppIcon.icns
+xcodegen && xcodebuild -scheme Verso -configuration Debug \
+  -destination 'platform=macOS' -derivedDataPath ./build build
 ```
+
+## Naming
+
+**Verso** — Latin/Italian for *verse* or *the back of a page*. Bookish and refined; evokes language and the printed word without being a literal "translator" name.

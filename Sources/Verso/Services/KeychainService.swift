@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 enum KeychainService {
-    private static let service = "com.tomoro.tomo"
+    private static let service = "com.tomoro.verso"
 
     @discardableResult
     static func set(_ value: String, forKey key: String) -> Bool {
