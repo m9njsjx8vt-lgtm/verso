@@ -3,11 +3,11 @@ import Combine
 
 final class AppSettings: ObservableObject {
     @Published var apiKey: String {
-        didSet { KeychainService.set(apiKey, forKey: "geminiApiKey") }
+        didSet { SecretsStore.set(apiKey, forKey: "geminiApiKey") }
     }
 
     @Published var deeplApiKey: String {
-        didSet { KeychainService.set(deeplApiKey, forKey: "deeplApiKey") }
+        didSet { SecretsStore.set(deeplApiKey, forKey: "deeplApiKey") }
     }
 
     @Published var translatorContext: String {
@@ -19,8 +19,8 @@ final class AppSettings: ObservableObject {
     }
 
     init() {
-        self.apiKey = KeychainService.get(forKey: "geminiApiKey") ?? ""
-        self.deeplApiKey = KeychainService.get(forKey: "deeplApiKey") ?? ""
+        self.apiKey = SecretsStore.get("geminiApiKey") ?? ""
+        self.deeplApiKey = SecretsStore.get("deeplApiKey") ?? ""
         self.translatorContext = UserDefaults.standard.string(forKey: "translatorContext")
             ?? Self.defaultContext
         self.model = UserDefaults.standard.string(forKey: "model")
