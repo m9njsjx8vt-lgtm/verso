@@ -6,6 +6,10 @@ final class AppSettings: ObservableObject {
         didSet { KeychainService.set(apiKey, forKey: "geminiApiKey") }
     }
 
+    @Published var deeplApiKey: String {
+        didSet { KeychainService.set(deeplApiKey, forKey: "deeplApiKey") }
+    }
+
     @Published var translatorContext: String {
         didSet { UserDefaults.standard.set(translatorContext, forKey: "translatorContext") }
     }
@@ -16,6 +20,7 @@ final class AppSettings: ObservableObject {
 
     init() {
         self.apiKey = KeychainService.get(forKey: "geminiApiKey") ?? ""
+        self.deeplApiKey = KeychainService.get(forKey: "deeplApiKey") ?? ""
         self.translatorContext = UserDefaults.standard.string(forKey: "translatorContext")
             ?? Self.defaultContext
         self.model = UserDefaults.standard.string(forKey: "model")

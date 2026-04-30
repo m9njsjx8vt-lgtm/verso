@@ -66,6 +66,18 @@ struct SettingsView: View {
                 Divider()
 
                 Group {
+                    Text("DeepL API Key (任意・即時プレビュー用)")
+                        .font(.headline)
+                    Text("登録すると、⌘C×2した瞬間にDeepLの即時翻訳が出て、その後Geminiが追いついて精緻版に置き換わります。無料枠は月50万文字。Get a free key at [deepl.com/pro-api](https://www.deepl.com/pro-api).")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    SecureField("DeepL key (空欄でもOK)", text: $settings.deeplApiKey)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Divider()
+
+                Group {
                     Text("Hotkeys")
                         .font(.headline)
                     VStack(alignment: .leading, spacing: 4) {

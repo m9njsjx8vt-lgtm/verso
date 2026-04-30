@@ -5,7 +5,8 @@ import SwiftUI
 final class PopupController {
     private let settings: AppSettings
     private let glossary: Glossary
-    private let client = GeminiClient()
+    private let geminiClient = GeminiClient()
+    private let deepLClient = DeepLClient()
     private var window: PopupWindow?
     private var sourceApp: NSRunningApplication?
     private var currentTaskId: Int = 0
@@ -19,7 +20,6 @@ final class PopupController {
     }
 
     func show(originalText: String) {
-        // Capture the active app BEFORE we steal focus
         sourceApp = NSWorkspace.shared.frontmostApplication
 
         let isJa = Self.isJapanese(originalText)
@@ -30,10 +30,8 @@ final class PopupController {
         currentFromFull = fromFull
         currentToFull = toFull
 
-        // Close any existing popup
         close(restoreFocus: false)
 
-        // Build the SwiftUI view-model with action callbacks
         let viewModel = PopupViewModel(
             originalText: originalText,
             fromLang: fromShort,
@@ -71,13 +69,34 @@ final class PopupController {
         window = popup
         popup.showAtMouse()
 
-        // Bump task id so any in-flight callback is ignored if we open a new popup
         currentTaskId += 1
         let taskId = currentTaskId
 
+        // Fast preview (DeepL) — best effort, silent fail. Skipped if no DeepL key.
+        if !settings.deeplApiKey.isEmpty {
+            Task { @MainActor in
+                do {
+                    let preview = try await deepLClient.translate(
+                        text: originalText,
+                        sourceLang: DeepLClient.deepLLang(for: fromFull),
+                        targetLang: DeepLClient.deepLLang(for: toFull),
+                        apiKey: settings.deeplApiKey
+                    )
+                    guard taskId == self.currentTaskId else { return }
+                    // Only set as preview if Gemini hasn't already arrived
+                    if case .loading = viewModel.state {
+                        viewModel.state = .preview(preview)
+                    }
+                } catch {
+                    print("[deepl preview] failed: \(error.localizedDescription)")
+                }
+            }
+        }
+
+        // Final translation (Gemini) — required, errors surfaced
         Task { @MainActor in
             do {
-                let translation = try await client.translate(
+                let translation = try await geminiClient.translate(
                     text: originalText,
                     from: fromFull,
                     to: toFull,
@@ -87,24 +106,30 @@ final class PopupController {
                     apiKey: settings.apiKey
                 )
                 guard taskId == self.currentTaskId else { return }
-                viewModel.translation = translation
-                viewModel.state = .ok
+                viewModel.finalTranslation = translation
+                viewModel.state = .ok(translation)
             } catch {
                 guard taskId == self.currentTaskId else { return }
-                viewModel.state = .error(error.localizedDescription)
+                // If we already have a preview showing, keep the preview but note the error briefly
+                if case .preview = viewModel.state {
+                    print("[gemini] failed but preview is shown: \(error.localizedDescription)")
+                    // Stay on preview state — user still sees a usable translation
+                } else {
+                    viewModel.state = .error(error.localizedDescription)
+                }
             }
         }
     }
 
     private func refine(instruction: String) {
-        guard let vm = currentViewModel, case .ok = vm.state else { return }
-        let snapshotTranslation = vm.translation
+        guard let vm = currentViewModel, vm.isFinal else { return }
+        let snapshotTranslation = vm.finalTranslation
         vm.isRefining = true
         currentTaskId += 1
         let taskId = currentTaskId
         Task { @MainActor in
             do {
-                let refined = try await client.refine(
+                let refined = try await geminiClient.refine(
                     originalText: vm.originalText,
                     currentTranslation: snapshotTranslation,
                     instruction: instruction,
@@ -116,7 +141,8 @@ final class PopupController {
                     apiKey: settings.apiKey
                 )
                 guard taskId == self.currentTaskId else { return }
-                vm.translation = refined
+                vm.finalTranslation = refined
+                vm.state = .ok(refined)
                 vm.isRefining = false
             } catch {
                 guard taskId == self.currentTaskId else { return }
@@ -131,7 +157,6 @@ final class PopupController {
         NSPasteboard.general.setString(translation, forType: .string)
 
         let app = sourceApp
-        // Tear down the popup WITHOUT restoring focus — we want to focus sourceApp
         window?.orderOut(nil)
         window = nil
         currentViewModel = nil
@@ -154,13 +179,12 @@ final class PopupController {
         }
     }
 
-    /// Heuristic: any hiragana / katakana / CJK code-point ⇒ treat as Japanese.
     private static func isJapanese(_ text: String) -> Bool {
         for scalar in text.unicodeScalars {
             let v = scalar.value
-            if (0x3040...0x309F).contains(v)   // Hiragana
-                || (0x30A0...0x30FF).contains(v) // Katakana
-                || (0x4E00...0x9FFF).contains(v) // CJK Unified Ideographs
+            if (0x3040...0x309F).contains(v)
+                || (0x30A0...0x30FF).contains(v)
+                || (0x4E00...0x9FFF).contains(v)
             {
                 return true
             }

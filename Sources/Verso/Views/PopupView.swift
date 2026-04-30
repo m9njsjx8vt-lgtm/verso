@@ -4,14 +4,16 @@ import SwiftUI
 final class PopupViewModel: ObservableObject {
     enum State: Equatable {
         case loading
-        case ok
+        case preview(String)  // Fast preview (DeepL), Gemini still in flight
+        case ok(String)       // Final Gemini result
         case error(String)
     }
 
     @Published var originalText: String
-    @Published var translation: String = ""
     @Published var state: State = .loading
     @Published var isRefining: Bool = false
+    /// The latest GEMINI translation. Used by refine (preview is not refinable).
+    @Published var finalTranslation: String = ""
 
     let fromLang: String
     let toLang: String
@@ -20,7 +22,7 @@ final class PopupViewModel: ObservableObject {
     let onCopy: (String) -> Void
     let onClose: () -> Void
     let onRefine: (String) -> Void
-    let onAddGlossary: (String, String, Bool) -> Void  // term, translation, preserveAsIs
+    let onAddGlossary: (String, String, Bool) -> Void
 
     init(
         originalText: String,
@@ -42,8 +44,27 @@ final class PopupViewModel: ObservableObject {
         self.onAddGlossary = onAddGlossary
     }
 
-    var isOk: Bool {
+    var displayedTranslation: String {
+        switch state {
+        case .preview(let t), .ok(let t): return t
+        default: return ""
+        }
+    }
+
+    var hasAnyTranslation: Bool {
+        switch state {
+        case .preview, .ok: return true
+        default: return false
+        }
+    }
+
+    var isFinal: Bool {
         if case .ok = state { return true }
+        return false
+    }
+
+    var isPreview: Bool {
+        if case .preview = state { return true }
         return false
     }
 }
@@ -59,11 +80,14 @@ struct PopupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Header
-            HStack {
+            HStack(spacing: 6) {
                 Text(headerText)
                     .font(.system(size: 11, weight: .semibold))
                     .tracking(1.0)
                     .foregroundColor(headerColor)
+                if viewModel.isPreview {
+                    ProgressView().controlSize(.mini)
+                }
                 Spacer()
                 Text("Esc で閉じる")
                     .font(.system(size: 11))
@@ -94,11 +118,16 @@ struct PopupView: View {
                 .cornerRadius(10)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color(NSColor.separatorColor), lineWidth: 1)
+                        .strokeBorder(
+                            viewModel.isPreview
+                                ? Color.accentColor.opacity(0.5)
+                                : Color(NSColor.separatorColor),
+                            lineWidth: 1
+                        )
                 )
 
-            // Refine bar (only after a successful translation)
-            if viewModel.isOk {
+            // Refine bar (only after Gemini final)
+            if viewModel.isFinal {
                 refineBar
             }
 
@@ -113,7 +142,7 @@ struct PopupView: View {
                     .padding(.vertical, 8)
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                .disabled(!viewModel.isOk)
+                .disabled(!viewModel.hasAnyTranslation)
                 .keyboardShortcut(.defaultAction)
 
                 Button(action: copyAction) {
@@ -122,7 +151,7 @@ struct PopupView: View {
                         .padding(.vertical, 8)
                 }
                 .buttonStyle(SecondaryButtonStyle())
-                .disabled(!viewModel.isOk)
+                .disabled(!viewModel.hasAnyTranslation)
 
                 Button(action: viewModel.onClose) {
                     HStack(spacing: 4) {
@@ -233,9 +262,9 @@ struct PopupView: View {
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-        case .ok:
+        case .preview(let text), .ok(let text):
             ScrollView {
-                Text(viewModel.translation)
+                Text(text)
                     .font(.system(size: 15))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
@@ -255,28 +284,32 @@ struct PopupView: View {
     }
 
     private func insertAction() {
-        if case .ok = viewModel.state {
-            viewModel.onInsert(viewModel.translation)
+        if viewModel.hasAnyTranslation {
+            viewModel.onInsert(viewModel.displayedTranslation)
         }
     }
 
     private func copyAction() {
-        if case .ok = viewModel.state {
-            viewModel.onCopy(viewModel.translation)
+        if viewModel.hasAnyTranslation {
+            viewModel.onCopy(viewModel.displayedTranslation)
         }
     }
 
     private var headerText: String {
         switch viewModel.state {
         case .loading: return "TRANSLATING…"
-        case .error: return "ERROR"
+        case .preview: return "\(viewModel.fromLang)  →  \(viewModel.toLang)  •  PREVIEW"
         case .ok: return "\(viewModel.fromLang)  →  \(viewModel.toLang)"
+        case .error: return "ERROR"
         }
     }
 
     private var headerColor: Color {
-        if case .error = viewModel.state { return .red }
-        return .secondary
+        switch viewModel.state {
+        case .error: return .red
+        case .preview: return .accentColor
+        default: return .secondary
+        }
     }
 }
 
