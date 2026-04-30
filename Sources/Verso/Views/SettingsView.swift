@@ -170,7 +170,7 @@ struct SettingsView: View {
             Text("Personal AI translation, on every page")
                 .font(.callout)
                 .foregroundColor(.secondary)
-            Text("v0.4.0")
+            Text("v0.5.0")
                 .foregroundColor(.secondary)
                 .padding(.top, 4)
             VStack(spacing: 4) {

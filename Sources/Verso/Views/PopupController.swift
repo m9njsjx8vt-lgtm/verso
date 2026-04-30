@@ -5,29 +5,33 @@ import SwiftUI
 final class PopupController {
     private let settings: AppSettings
     private let glossary: Glossary
+    private let history: HistoryStore
     private let geminiClient = GeminiClient()
     private let deepLClient = DeepLClient()
     private var window: PopupWindow?
     private var sourceApp: NSRunningApplication?
     private var currentViewModel: PopupViewModel?
 
-    /// Cancellable in-flight tasks for the current popup
     private var deepLTask: Task<Void, Never>?
     private var geminiTask: Task<Void, Never>?
     private var refineTask: Task<Void, Never>?
+    private var learnTask: Task<Void, Never>?
 
-    /// Captured language pair for the active popup (used by refine + retry)
     private var activeLangPair: LanguageDetector.Pair?
     private var activeOriginal: String = ""
+    /// True once Gemini's first successful translation has been recorded to history
+    private var historyRecorded: Bool = false
 
-    init(settings: AppSettings, glossary: Glossary) {
+    init(settings: AppSettings, glossary: Glossary, history: HistoryStore) {
         self.settings = settings
         self.glossary = glossary
+        self.history = history
     }
 
     func show(originalText: String) {
         sourceApp = NSWorkspace.shared.frontmostApplication
         activeOriginal = originalText
+        historyRecorded = false
 
         let pair = LanguageDetector.detect(originalText)
         activeLangPair = pair
@@ -41,41 +45,27 @@ final class PopupController {
             fromLang: pair.sourceShort,
             toLang: pair.targetShort,
             deepLConfigured: deepLConfigured,
-            onInsert: { [weak self] translation in
-                self?.insertAndClose(translation)
-            },
-            onCopy: { [weak self] translation in
+            onInsert: { [weak self] t in self?.insertAndClose(t) },
+            onCopy: { [weak self] t in
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(translation, forType: .string)
+                NSPasteboard.general.setString(t, forType: .string)
                 self?.close(restoreFocus: true)
             },
-            onClose: { [weak self] in
-                self?.close(restoreFocus: true)
+            onClose: { [weak self] in self?.close(restoreFocus: true) },
+            onRefine: { [weak self] instr in self?.refine(instruction: instr) },
+            onAddGlossary: { [weak self] term, t, preserve in
+                self?.glossary.add(term: term, translation: t, preserveAsIs: preserve)
+                self?.currentViewModel?.showToast("用語を追加: \(term)")
             },
-            onRefine: { [weak self] instruction in
-                self?.refine(instruction: instruction)
-            },
-            onAddGlossary: { [weak self] term, translation, preserve in
-                self?.glossary.add(
-                    term: term,
-                    translation: translation,
-                    preserveAsIs: preserve
-                )
-            },
-            onUndo: { [weak self] in
-                self?.undoLastRefine()
-            },
-            onRetry: { [weak self] in
-                self?.retry()
-            }
+            onUndo: { [weak self] in self?.undoLastRefine() },
+            onRetry: { [weak self] in self?.retry() },
+            onSaveEdit: { [weak self] edited in self?.saveEdit(edited) }
         )
         currentViewModel = viewModel
 
         let popup = PopupWindow(
             rootView: PopupView(viewModel: viewModel),
-            onResignKey: { [weak self] in
-                self?.close(restoreFocus: false)
-            }
+            onResignKey: { [weak self] in self?.close(restoreFocus: false) }
         )
         window = popup
         popup.showAtMouse()
@@ -84,21 +74,20 @@ final class PopupController {
     }
 
     private func startInitialTranslations(viewModel: PopupViewModel) {
-        // Cancel any prior tasks (defensive — close() already nilled them)
         deepLTask?.cancel(); geminiTask?.cancel()
 
         guard let pair = activeLangPair else { return }
         let originalText = activeOriginal
         let appHint = sourceApp?.localizedName
 
-        // DeepL
-        if !settings.deeplApiKey.isEmpty, let deepLSrc = pair.deepLSource {
+        // DeepL preview
+        if !settings.deeplApiKey.isEmpty {
             deepLTask = Task { @MainActor [weak self, weak viewModel] in
                 guard let self = self, let viewModel = viewModel else { return }
                 do {
                     let preview = try await self.deepLClient.translate(
                         text: originalText,
-                        sourceLang: deepLSrc,
+                        sourceLang: pair.deepLSource,
                         targetLang: pair.deepLTarget,
                         apiKey: self.settings.deeplApiKey
                     )
@@ -111,11 +100,11 @@ final class PopupController {
             }
         }
 
-        // Gemini
+        // Gemini — STREAMING
         geminiTask = Task { @MainActor [weak self, weak viewModel] in
             guard let self = self, let viewModel = viewModel else { return }
             do {
-                let translation = try await self.geminiClient.translate(
+                let final = try await self.geminiClient.translateStreaming(
                     text: originalText,
                     from: pair.sourceFull,
                     to: pair.targetFull,
@@ -123,10 +112,17 @@ final class PopupController {
                     glossary: self.glossary.formattedForPrompt(),
                     sourceAppHint: appHint,
                     model: self.settings.model,
-                    apiKey: self.settings.apiKey
+                    apiKey: self.settings.apiKey,
+                    onChunk: { [weak viewModel] partial in
+                        await MainActor.run {
+                            viewModel?.geminiState = .ok(partial)
+                        }
+                    }
                 )
                 if Task.isCancelled { return }
-                viewModel.geminiState = .ok(translation)
+                // Final pass to ensure trimmed text is set
+                viewModel.geminiState = .ok(final)
+                self.recordHistoryIfNeeded(translation: final, pair: pair, appHint: appHint)
             } catch {
                 if Task.isCancelled { return }
                 viewModel.geminiState = .failed(error.localizedDescription)
@@ -163,18 +159,15 @@ final class PopupController {
                 if Task.isCancelled { vm.isRefining = false; return }
                 vm.geminiState = .failed(error.localizedDescription)
                 vm.isRefining = false
-                // Revert the snapshot push since refine failed
-                if vm.undoStack.last == snapshot {
-                    vm.undoStack.removeLast()
-                }
+                if vm.undoStack.last == snapshot { vm.undoStack.removeLast() }
             }
         }
     }
 
     private func undoLastRefine() {
         guard let vm = currentViewModel, !vm.undoStack.isEmpty else { return }
-        let previous = vm.undoStack.removeLast()
-        vm.geminiState = .ok(previous)
+        let prev = vm.undoStack.removeLast()
+        vm.geminiState = .ok(prev)
     }
 
     private func retry() {
@@ -182,6 +175,69 @@ final class PopupController {
         vm.geminiState = .loading
         if vm.showDeepLPanel { vm.deepLState = .loading }
         startInitialTranslations(viewModel: vm)
+    }
+
+    /// User edited the translation in-line. Update state, then asynchronously ask Gemini
+    /// to extract any term-level corrections and add them to the glossary.
+    private func saveEdit(_ edited: String) {
+        guard let vm = currentViewModel,
+              let pair = activeLangPair else { return }
+        let originalTranslation = vm.geminiText
+        let trimmed = edited.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        vm.geminiState = .ok(trimmed)
+        vm.isEditing = false
+
+        // No diff → no learning
+        guard !trimmed.isEmpty, trimmed != originalTranslation else {
+            vm.showToast("変更なし")
+            return
+        }
+        vm.showToast("保存しました — 用語を学習中…", duration: 2.0)
+
+        learnTask?.cancel()
+        learnTask = Task { @MainActor [weak self, weak vm] in
+            guard let self = self, let vm = vm else { return }
+            do {
+                let pairs = try await self.geminiClient.extractGlossaryDiff(
+                    originalText: vm.originalText,
+                    modelTranslation: originalTranslation,
+                    userTranslation: trimmed,
+                    from: pair.sourceFull,
+                    to: pair.targetFull,
+                    model: self.settings.model,
+                    apiKey: self.settings.apiKey
+                )
+                if Task.isCancelled { return }
+                if pairs.isEmpty {
+                    vm.showToast("用語の変更は検出されませんでした")
+                } else {
+                    for pair in pairs {
+                        self.glossary.add(
+                            term: pair.term,
+                            translation: pair.translation,
+                            preserveAsIs: false
+                        )
+                    }
+                    vm.showToast("\(pairs.count)個の用語を Glossary に追加しました")
+                }
+            } catch {
+                if Task.isCancelled { return }
+                vm.showToast("用語抽出失敗: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func recordHistoryIfNeeded(translation: String, pair: LanguageDetector.Pair, appHint: String?) {
+        guard !historyRecorded, !translation.isEmpty else { return }
+        historyRecorded = true
+        history.record(
+            sourceLang: pair.sourceShort,
+            targetLang: pair.targetShort,
+            sourceText: activeOriginal,
+            translation: translation,
+            sourceApp: appHint
+        )
     }
 
     private func insertAndClose(_ translation: String) {
@@ -211,14 +267,13 @@ final class PopupController {
         window?.orderOut(nil)
         window = nil
         currentViewModel = nil
-        if restoreFocus, let app = app {
-            app.activate()
-        }
+        if restoreFocus, let app = app { app.activate() }
     }
 
     private func cancelAllTasks() {
         deepLTask?.cancel(); deepLTask = nil
         geminiTask?.cancel(); geminiTask = nil
         refineTask?.cancel(); refineTask = nil
+        learnTask?.cancel(); learnTask = nil
     }
 }

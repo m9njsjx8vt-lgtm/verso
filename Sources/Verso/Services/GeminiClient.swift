@@ -48,6 +48,102 @@ final class GeminiClient {
         return try await callWithRetry(prompt: prompt, model: model, apiKey: apiKey, textLen: text.count)
     }
 
+    // MARK: - Streaming translate (emits accumulated text as chunks arrive)
+
+    func translateStreaming(
+        text: String,
+        from: String,
+        to: String,
+        context: String?,
+        glossary: String?,
+        sourceAppHint: String?,
+        model: String,
+        apiKey: String,
+        onChunk: @escaping (String) async -> Void
+    ) async throws -> String {
+        guard !apiKey.isEmpty else { throw GeminiError.missingApiKey }
+        let prompt = Self.buildTranslatePrompt(
+            text: text, from: from, to: to,
+            context: context, glossary: glossary, sourceAppHint: sourceAppHint
+        )
+
+        guard let url = URL(string:
+            "https://generativelanguage.googleapis.com/v1beta/models/\(model):streamGenerateContent?alt=sse&key=\(apiKey)"
+        ) else {
+            throw GeminiError.invalidResponse
+        }
+
+        let body: [String: Any] = [
+            "contents": [["parts": [["text": prompt]]]],
+            "generationConfig": ["temperature": 0.2]
+        ]
+        let timeout = min(60.0, max(12.0, 12.0 + Double(text.count) / 200.0))
+
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (bytes, response): (URLSession.AsyncBytes, URLResponse)
+        do {
+            (bytes, response) = try await URLSession.shared.bytes(for: request)
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw GeminiError.timedOut
+        } catch {
+            throw GeminiError.httpError(-1, error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw GeminiError.invalidResponse
+        }
+        if http.statusCode == 429 { throw GeminiError.rateLimited }
+        guard http.statusCode == 200 else {
+            // Drain bytes to avoid leaking the connection
+            var body = Data()
+            for try await chunk in bytes { body.append(chunk) }
+            let s = String(data: body, encoding: .utf8) ?? ""
+            throw GeminiError.httpError(http.statusCode, s)
+        }
+
+        var accumulated = ""
+        for try await line in bytes.lines {
+            if Task.isCancelled { break }
+            guard line.hasPrefix("data: ") else { continue }
+            let payload = String(line.dropFirst(6))
+            guard
+                let data = payload.data(using: .utf8),
+                let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+
+            if let pf = dict["promptFeedback"] as? [String: Any],
+               let reason = pf["blockReason"] as? String {
+                throw GeminiError.safetyFiltered(reason)
+            }
+
+            guard
+                let candidates = dict["candidates"] as? [[String: Any]],
+                let first = candidates.first
+            else { continue }
+
+            if let finish = first["finishReason"] as? String,
+               finish == "SAFETY" || finish == "RECITATION" {
+                throw GeminiError.safetyFiltered(finish)
+            }
+
+            guard
+                let content = first["content"] as? [String: Any],
+                let parts = content["parts"] as? [[String: Any]],
+                let firstPart = parts.first,
+                let chunk = firstPart["text"] as? String
+            else { continue }
+
+            accumulated += chunk
+            await onChunk(accumulated)
+        }
+
+        return accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     // MARK: - Refine
 
     func refine(

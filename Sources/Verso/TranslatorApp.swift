@@ -9,6 +9,7 @@ struct TranslatorApp: App {
             SettingsView()
                 .environmentObject(appDelegate.settings)
                 .environmentObject(appDelegate.glossary)
+                .environmentObject(appDelegate.history)
         }
     }
 }
