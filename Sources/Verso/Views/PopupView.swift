@@ -107,7 +107,7 @@ struct PopupView: View {
             actionBar
         }
         .padding(14)
-        .frame(width: 580, height: viewModel.showDeepLPanel ? 560 : 460)
+        .frame(minWidth: 500, minHeight: 380)
     }
 
     // MARK: - Header

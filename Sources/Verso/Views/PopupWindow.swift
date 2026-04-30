@@ -3,15 +3,29 @@ import SwiftUI
 
 final class PopupWindow: NSPanel {
     private let onResignKey: () -> Void
+    private static let sizeKey = "PopupWindow.lastSize"
 
     init(rootView: PopupView, onResignKey: @escaping () -> Void, preferredHeight: CGFloat = 460) {
         self.onResignKey = onResignKey
+
+        // Restore last user-resized size if available, else use defaults
+        let defaultSize = NSSize(width: 720, height: preferredHeight)
+        let restoredSize: NSSize
+        if let dict = UserDefaults.standard.dictionary(forKey: Self.sizeKey),
+           let w = dict["w"] as? CGFloat, let h = dict["h"] as? CGFloat,
+           w >= 500, h >= 380 {
+            restoredSize = NSSize(width: w, height: h)
+        } else {
+            restoredSize = defaultSize
+        }
+
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 580, height: preferredHeight),
-            styleMask: [.titled, .closable, .utilityWindow],
+            contentRect: NSRect(origin: .zero, size: restoredSize),
+            styleMask: [.titled, .closable, .resizable, .utilityWindow],
             backing: .buffered,
             defer: false
         )
+        contentMinSize = NSSize(width: 500, height: 380)
         self.title = "翻訳"
         self.level = .floating
         self.isFloatingPanel = true
@@ -52,5 +66,11 @@ final class PopupWindow: NSPanel {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.onResignKey()
         }
+    }
+
+    /// Persist the window's current content size so the next popup opens at the same dims.
+    func persistCurrentSize() {
+        let size = frame.size
+        UserDefaults.standard.set(["w": size.width, "h": size.height], forKey: Self.sizeKey)
     }
 }

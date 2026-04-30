@@ -165,6 +165,7 @@ final class PopupController {
 
     func close(restoreFocus: Bool) {
         let app = sourceApp
+        window?.persistCurrentSize()  // remember last size for next popup
         window?.orderOut(nil)
         window = nil
         currentViewModel = nil
