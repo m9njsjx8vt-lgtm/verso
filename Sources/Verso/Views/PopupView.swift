@@ -2,18 +2,17 @@ import SwiftUI
 
 @MainActor
 final class PopupViewModel: ObservableObject {
-    enum State: Equatable {
+    enum ProviderState: Equatable {
+        case notConfigured
         case loading
-        case preview(String)  // Fast preview (DeepL), Gemini still in flight
-        case ok(String)       // Final Gemini result
-        case error(String)
+        case ok(String)
+        case failed(String)
     }
 
     @Published var originalText: String
-    @Published var state: State = .loading
+    @Published var deepLState: ProviderState
+    @Published var geminiState: ProviderState = .loading
     @Published var isRefining: Bool = false
-    /// The latest GEMINI translation. Used by refine (preview is not refinable).
-    @Published var finalTranslation: String = ""
 
     let fromLang: String
     let toLang: String
@@ -28,6 +27,7 @@ final class PopupViewModel: ObservableObject {
         originalText: String,
         fromLang: String,
         toLang: String,
+        deepLConfigured: Bool,
         onInsert: @escaping (String) -> Void,
         onCopy: @escaping (String) -> Void,
         onClose: @escaping () -> Void,
@@ -37,6 +37,7 @@ final class PopupViewModel: ObservableObject {
         self.originalText = originalText
         self.fromLang = fromLang
         self.toLang = toLang
+        self.deepLState = deepLConfigured ? .loading : .notConfigured
         self.onInsert = onInsert
         self.onCopy = onCopy
         self.onClose = onClose
@@ -44,28 +45,31 @@ final class PopupViewModel: ObservableObject {
         self.onAddGlossary = onAddGlossary
     }
 
-    var displayedTranslation: String {
-        switch state {
-        case .preview(let t), .ok(let t): return t
-        default: return ""
-        }
+    /// Best available translation: Gemini > DeepL.
+    var primaryInsertText: String {
+        if case .ok(let t) = geminiState { return t }
+        if case .ok(let t) = deepLState { return t }
+        return ""
     }
 
     var hasAnyTranslation: Bool {
-        switch state {
-        case .preview, .ok: return true
-        default: return false
-        }
-    }
-
-    var isFinal: Bool {
-        if case .ok = state { return true }
+        if case .ok = geminiState { return true }
+        if case .ok = deepLState { return true }
         return false
     }
 
-    var isPreview: Bool {
-        if case .preview = state { return true }
+    var isGeminiOk: Bool {
+        if case .ok = geminiState { return true }
         return false
+    }
+
+    var geminiText: String {
+        if case .ok(let t) = geminiState { return t }
+        return ""
+    }
+
+    var showDeepLPanel: Bool {
+        deepLState != .notConfigured
     }
 }
 
@@ -79,94 +83,135 @@ struct PopupView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header
+            header
+            originalPanel
+            if viewModel.showDeepLPanel {
+                providerPanel(
+                    title: "DeepL",
+                    icon: "bolt.fill",
+                    color: Color(red: 0.07, green: 0.45, blue: 0.95),  // DeepL blue
+                    state: viewModel.deepLState,
+                    isCompact: true
+                )
+            }
+            providerPanel(
+                title: viewModel.isRefining ? "Gemini  •  REFINING…" : "Gemini",
+                icon: "sparkles",
+                color: Color(red: 0.55, green: 0.20, blue: 0.85),  // Gemini purple
+                state: viewModel.geminiState,
+                isCompact: false
+            )
+            if viewModel.isGeminiOk {
+                refineBar
+            }
+            actionBar
+        }
+        .padding(14)
+        .frame(width: 580, height: viewModel.showDeepLPanel ? 560 : 460)
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            Text("\(viewModel.fromLang)  →  \(viewModel.toLang)")
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(1.0)
+                .foregroundColor(.secondary)
+            Spacer()
+            Text("Esc で閉じる")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    // MARK: - Original
+
+    private var originalPanel: some View {
+        ScrollView {
+            Text(viewModel.originalText)
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .textSelection(.enabled)
+        }
+        .frame(maxHeight: 90)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color(NSColor.separatorColor), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Provider panel (DeepL or Gemini)
+
+    @ViewBuilder
+    private func providerPanel(
+        title: String,
+        icon: String,
+        color: Color,
+        state: PopupViewModel.ProviderState,
+        isCompact: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Text(headerText)
-                    .font(.system(size: 11, weight: .semibold))
-                    .tracking(1.0)
-                    .foregroundColor(headerColor)
-                if viewModel.isPreview {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                    .font(.system(size: 11, weight: .bold))
+                Text(title.uppercased())
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundColor(color)
+                if case .loading = state {
                     ProgressView().controlSize(.mini)
                 }
                 Spacer()
-                Text("Esc で閉じる")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
             }
 
-            // Original text panel
-            ScrollView {
-                Text(viewModel.originalText)
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            Group {
+                switch state {
+                case .notConfigured:
+                    EmptyView()
+
+                case .loading:
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("translating…")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
                     .padding(12)
-                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                case .ok(let text):
+                    ScrollView {
+                        Text(text)
+                            .font(.system(size: isCompact ? 14 : 15))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .textSelection(.enabled)
+                    }
+
+                case .failed(let msg):
+                    Text("⚠️ \(msg)")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .textSelection(.enabled)
+                }
             }
-            .frame(maxHeight: 100)
+            .frame(maxWidth: .infinity, maxHeight: isCompact ? 110 : .infinity)
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(10)
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Color(NSColor.separatorColor), lineWidth: 1)
+                    .strokeBorder(color.opacity(0.4), lineWidth: 1.5)
             )
-
-            // Translation / loading / error panel
-            translationPanel
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(10)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(
-                            viewModel.isPreview
-                                ? Color.accentColor.opacity(0.5)
-                                : Color(NSColor.separatorColor),
-                            lineWidth: 1
-                        )
-                )
-
-            // Refine bar (only after Gemini final)
-            if viewModel.isFinal {
-                refineBar
-            }
-
-            // Actions
-            HStack(spacing: 6) {
-                Button(action: insertAction) {
-                    HStack(spacing: 4) {
-                        Text("↩ 挿入")
-                        Text("↵").font(.system(size: 10))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(!viewModel.hasAnyTranslation)
-                .keyboardShortcut(.defaultAction)
-
-                Button(action: copyAction) {
-                    Text("📋 コピー")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(!viewModel.hasAnyTranslation)
-
-                Button(action: viewModel.onClose) {
-                    HStack(spacing: 4) {
-                        Text("閉じる")
-                        Text("Esc").font(.system(size: 10))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                }
-                .buttonStyle(SecondaryButtonStyle())
-                .keyboardShortcut(.cancelAction)
-            }
         }
-        .padding(14)
-        .frame(width: 560, height: 460)
     }
 
     // MARK: - Refine bar
@@ -203,6 +248,49 @@ struct PopupView: View {
         .controlSize(.small)
         .font(.caption)
         .disabled(viewModel.isRefining)
+    }
+
+    // MARK: - Action bar
+
+    private var actionBar: some View {
+        HStack(spacing: 6) {
+            Button(action: insertAction) {
+                HStack(spacing: 4) {
+                    Text(insertLabel)
+                    Text("↵").font(.system(size: 10))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(!viewModel.hasAnyTranslation)
+            .keyboardShortcut(.defaultAction)
+
+            Button(action: copyAction) {
+                Text("📋 コピー")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .disabled(!viewModel.hasAnyTranslation)
+
+            Button(action: viewModel.onClose) {
+                HStack(spacing: 4) {
+                    Text("閉じる")
+                    Text("Esc").font(.system(size: 10))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .keyboardShortcut(.cancelAction)
+        }
+    }
+
+    private var insertLabel: String {
+        if case .ok = viewModel.geminiState { return "↩ 挿入 (Gemini)" }
+        if case .ok = viewModel.deepLState { return "↩ 挿入 (DeepL)" }
+        return "↩ 挿入"
     }
 
     // MARK: - Add to glossary popover
@@ -249,67 +337,16 @@ struct PopupView: View {
         .frame(width: 380)
     }
 
-    // MARK: - Translation panel content
-
-    @ViewBuilder
-    private var translationPanel: some View {
-        switch viewModel.state {
-        case .loading:
-            HStack {
-                ProgressView().controlSize(.small)
-                Spacer()
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-        case .preview(let text), .ok(let text):
-            ScrollView {
-                Text(text)
-                    .font(.system(size: 15))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .textSelection(.enabled)
-            }
-
-        case .error(let msg):
-            ScrollView {
-                Text("⚠️ \(msg)")
-                    .font(.system(size: 13))
-                    .foregroundColor(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .textSelection(.enabled)
-            }
-        }
-    }
-
     private func insertAction() {
-        if viewModel.hasAnyTranslation {
-            viewModel.onInsert(viewModel.displayedTranslation)
-        }
+        let text = viewModel.primaryInsertText
+        guard !text.isEmpty else { return }
+        viewModel.onInsert(text)
     }
 
     private func copyAction() {
-        if viewModel.hasAnyTranslation {
-            viewModel.onCopy(viewModel.displayedTranslation)
-        }
-    }
-
-    private var headerText: String {
-        switch viewModel.state {
-        case .loading: return "TRANSLATING…"
-        case .preview: return "\(viewModel.fromLang)  →  \(viewModel.toLang)  •  PREVIEW"
-        case .ok: return "\(viewModel.fromLang)  →  \(viewModel.toLang)"
-        case .error: return "ERROR"
-        }
-    }
-
-    private var headerColor: Color {
-        switch viewModel.state {
-        case .error: return .red
-        case .preview: return .accentColor
-        default: return .secondary
-        }
+        let text = viewModel.primaryInsertText
+        guard !text.isEmpty else { return }
+        viewModel.onCopy(text)
     }
 }
 

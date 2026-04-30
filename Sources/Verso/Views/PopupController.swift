@@ -30,12 +30,15 @@ final class PopupController {
         currentFromFull = fromFull
         currentToFull = toFull
 
+        let deepLConfigured = !settings.deeplApiKey.isEmpty
+
         close(restoreFocus: false)
 
         let viewModel = PopupViewModel(
             originalText: originalText,
             fromLang: fromShort,
             toLang: toShort,
+            deepLConfigured: deepLConfigured,
             onInsert: { [weak self] translation in
                 self?.insertAndClose(translation)
             },
@@ -64,7 +67,8 @@ final class PopupController {
             rootView: PopupView(viewModel: viewModel),
             onResignKey: { [weak self] in
                 self?.close(restoreFocus: false)
-            }
+            },
+            preferredHeight: deepLConfigured ? 560 : 460
         )
         window = popup
         popup.showAtMouse()
@@ -72,8 +76,8 @@ final class PopupController {
         currentTaskId += 1
         let taskId = currentTaskId
 
-        // Fast preview (DeepL) — best effort, silent fail. Skipped if no DeepL key.
-        if !settings.deeplApiKey.isEmpty {
+        // DeepL
+        if deepLConfigured {
             Task { @MainActor in
                 do {
                     let preview = try await deepLClient.translate(
@@ -83,17 +87,15 @@ final class PopupController {
                         apiKey: settings.deeplApiKey
                     )
                     guard taskId == self.currentTaskId else { return }
-                    // Only set as preview if Gemini hasn't already arrived
-                    if case .loading = viewModel.state {
-                        viewModel.state = .preview(preview)
-                    }
+                    viewModel.deepLState = .ok(preview)
                 } catch {
-                    print("[deepl preview] failed: \(error.localizedDescription)")
+                    guard taskId == self.currentTaskId else { return }
+                    viewModel.deepLState = .failed(error.localizedDescription)
                 }
             }
         }
 
-        // Final translation (Gemini) — required, errors surfaced
+        // Gemini
         Task { @MainActor in
             do {
                 let translation = try await geminiClient.translate(
@@ -106,24 +108,17 @@ final class PopupController {
                     apiKey: settings.apiKey
                 )
                 guard taskId == self.currentTaskId else { return }
-                viewModel.finalTranslation = translation
-                viewModel.state = .ok(translation)
+                viewModel.geminiState = .ok(translation)
             } catch {
                 guard taskId == self.currentTaskId else { return }
-                // If we already have a preview showing, keep the preview but note the error briefly
-                if case .preview = viewModel.state {
-                    print("[gemini] failed but preview is shown: \(error.localizedDescription)")
-                    // Stay on preview state — user still sees a usable translation
-                } else {
-                    viewModel.state = .error(error.localizedDescription)
-                }
+                viewModel.geminiState = .failed(error.localizedDescription)
             }
         }
     }
 
     private func refine(instruction: String) {
-        guard let vm = currentViewModel, vm.isFinal else { return }
-        let snapshotTranslation = vm.finalTranslation
+        guard let vm = currentViewModel, vm.isGeminiOk else { return }
+        let snapshotTranslation = vm.geminiText
         vm.isRefining = true
         currentTaskId += 1
         let taskId = currentTaskId
@@ -141,12 +136,11 @@ final class PopupController {
                     apiKey: settings.apiKey
                 )
                 guard taskId == self.currentTaskId else { return }
-                vm.finalTranslation = refined
-                vm.state = .ok(refined)
+                vm.geminiState = .ok(refined)
                 vm.isRefining = false
             } catch {
                 guard taskId == self.currentTaskId else { return }
-                vm.state = .error(error.localizedDescription)
+                vm.geminiState = .failed(error.localizedDescription)
                 vm.isRefining = false
             }
         }

@@ -4,10 +4,10 @@ import SwiftUI
 final class PopupWindow: NSPanel {
     private let onResignKey: () -> Void
 
-    init(rootView: PopupView, onResignKey: @escaping () -> Void) {
+    init(rootView: PopupView, onResignKey: @escaping () -> Void, preferredHeight: CGFloat = 460) {
         self.onResignKey = onResignKey
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 460),
+            contentRect: NSRect(x: 0, y: 0, width: 580, height: preferredHeight),
             styleMask: [.titled, .closable, .utilityWindow],
             backing: .buffered,
             defer: false
