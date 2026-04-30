@@ -52,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(
-            title: "Quit Translator",
+            title: "Quit Tomo",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         ))
