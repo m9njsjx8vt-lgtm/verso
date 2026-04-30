@@ -13,6 +13,8 @@ final class PopupViewModel: ObservableObject {
     @Published var deepLState: ProviderState
     @Published var geminiState: ProviderState = .loading
     @Published var isRefining: Bool = false
+    /// Refines push the previous translation here so user can ⌘Z back.
+    @Published var undoStack: [String] = []
 
     let fromLang: String
     let toLang: String
@@ -22,6 +24,8 @@ final class PopupViewModel: ObservableObject {
     let onClose: () -> Void
     let onRefine: (String) -> Void
     let onAddGlossary: (String, String, Bool) -> Void
+    let onUndo: () -> Void
+    let onRetry: () -> Void
 
     init(
         originalText: String,
@@ -32,7 +36,9 @@ final class PopupViewModel: ObservableObject {
         onCopy: @escaping (String) -> Void,
         onClose: @escaping () -> Void,
         onRefine: @escaping (String) -> Void,
-        onAddGlossary: @escaping (String, String, Bool) -> Void
+        onAddGlossary: @escaping (String, String, Bool) -> Void,
+        onUndo: @escaping () -> Void,
+        onRetry: @escaping () -> Void
     ) {
         self.originalText = originalText
         self.fromLang = fromLang
@@ -43,9 +49,10 @@ final class PopupViewModel: ObservableObject {
         self.onClose = onClose
         self.onRefine = onRefine
         self.onAddGlossary = onAddGlossary
+        self.onUndo = onUndo
+        self.onRetry = onRetry
     }
 
-    /// Best available translation: Gemini > DeepL.
     var primaryInsertText: String {
         if case .ok(let t) = geminiState { return t }
         if case .ok(let t) = deepLState { return t }
@@ -71,6 +78,15 @@ final class PopupViewModel: ObservableObject {
     var showDeepLPanel: Bool {
         deepLState != .notConfigured
     }
+
+    var canUndo: Bool {
+        !undoStack.isEmpty && !isRefining
+    }
+
+    var hasGeminiError: Bool {
+        if case .failed = geminiState { return true }
+        return false
+    }
 }
 
 struct PopupView: View {
@@ -89,7 +105,7 @@ struct PopupView: View {
                 providerPanel(
                     title: "DeepL",
                     icon: "bolt.fill",
-                    color: Color(red: 0.07, green: 0.45, blue: 0.95),  // DeepL blue
+                    color: .blue,
                     state: viewModel.deepLState,
                     isCompact: true
                 )
@@ -97,7 +113,7 @@ struct PopupView: View {
             providerPanel(
                 title: viewModel.isRefining ? "Gemini  •  REFINING…" : "Gemini",
                 icon: "sparkles",
-                color: Color(red: 0.55, green: 0.20, blue: 0.85),  // Gemini purple
+                color: .purple,
                 state: viewModel.geminiState,
                 isCompact: false
             )
@@ -106,7 +122,7 @@ struct PopupView: View {
             }
             actionBar
         }
-        .padding(14)
+        .padding(16)
         .frame(
             minWidth: 500,
             idealWidth: 720,
@@ -115,6 +131,38 @@ struct PopupView: View {
             idealHeight: viewModel.showDeepLPanel ? 560 : 460,
             maxHeight: .infinity
         )
+        // Hidden buttons for keyboard shortcuts only
+        .background(
+            ZStack {
+                if viewModel.canUndo {
+                    Button("") { viewModel.onUndo() }
+                        .keyboardShortcut("z", modifiers: .command)
+                        .opacity(0)
+                }
+                if viewModel.isGeminiOk {
+                    Button("") {
+                        viewModel.onRefine("Make the translation shorter and more concise while preserving meaning.")
+                    }
+                    .keyboardShortcut("1", modifiers: .command)
+                    .opacity(0)
+                    Button("") {
+                        viewModel.onRefine("Make the translation more casual and conversational.")
+                    }
+                    .keyboardShortcut("2", modifiers: .command)
+                    .opacity(0)
+                    Button("") {
+                        viewModel.onRefine("Make the translation more formal and polite.")
+                    }
+                    .keyboardShortcut("3", modifiers: .command)
+                    .opacity(0)
+                    Button("") {
+                        viewModel.onRefine("Provide an alternative translation with different word choices.")
+                    }
+                    .keyboardShortcut("4", modifiers: .command)
+                    .opacity(0)
+                }
+            }
+        )
     }
 
     // MARK: - Header
@@ -122,12 +170,13 @@ struct PopupView: View {
     private var header: some View {
         HStack {
             Text("\(viewModel.fromLang)  →  \(viewModel.toLang)")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.caption)
+                .fontWeight(.semibold)
                 .tracking(1.0)
                 .foregroundColor(.secondary)
             Spacer()
             Text("⤡ ドラッグで拡縮  •  Esc で閉じる")
-                .font(.system(size: 11))
+                .font(.caption2)
                 .foregroundColor(.secondary)
         }
     }
@@ -137,7 +186,7 @@ struct PopupView: View {
     private var originalPanel: some View {
         ScrollView {
             Text(viewModel.originalText)
-                .font(.system(size: 13))
+                .font(.callout)
                 .foregroundColor(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
@@ -166,15 +215,27 @@ struct PopupView: View {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .foregroundColor(color)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.caption)
+                    .fontWeight(.bold)
                 Text(title.uppercased())
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.caption2)
+                    .fontWeight(.bold)
                     .tracking(0.8)
                     .foregroundColor(color)
                 if case .loading = state {
                     ProgressView().controlSize(.mini)
                 }
                 Spacer()
+
+                // Inline retry button when this provider failed
+                if case .failed = state {
+                    Button(action: viewModel.onRetry) {
+                        Label("Retry", systemImage: "arrow.clockwise")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                }
             }
 
             Group {
@@ -196,19 +257,27 @@ struct PopupView: View {
                 case .ok(let text):
                     ScrollView {
                         Text(text)
-                            .font(.system(size: isCompact ? 14 : 15))
+                            .font(isCompact ? .callout : .body)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
                             .textSelection(.enabled)
                     }
 
                 case .failed(let msg):
-                    Text("⚠️ \(msg)")
-                        .font(.caption)
-                        .foregroundColor(.red)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text(msg)
+                                    .font(.caption)
+                                    .foregroundColor(.primary)
+                                    .textSelection(.enabled)
+                            }
+                        }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
-                        .textSelection(.enabled)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: isCompact ? 110 : .infinity)
@@ -228,24 +297,42 @@ struct PopupView: View {
             if viewModel.isRefining {
                 ProgressView().controlSize(.small)
             }
-            Button("🔁 短く") {
-                viewModel.onRefine("Make the translation shorter and more concise while preserving meaning.")
+            Button { viewModel.onRefine("Make the translation shorter and more concise while preserving meaning.") } label: {
+                Label("短く", systemImage: "arrow.down.right.and.arrow.up.left")
             }
-            Button("🔁 砕け") {
-                viewModel.onRefine("Make the translation more casual and conversational.")
+            .help("⌘1 — shorter")
+
+            Button { viewModel.onRefine("Make the translation more casual and conversational.") } label: {
+                Label("砕け", systemImage: "bubble.left")
             }
-            Button("🔁 丁寧") {
-                viewModel.onRefine("Make the translation more formal and polite.")
+            .help("⌘2 — casual")
+
+            Button { viewModel.onRefine("Make the translation more formal and polite.") } label: {
+                Label("丁寧", systemImage: "person.crop.circle.badge.checkmark")
             }
-            Button("🔁 別案") {
-                viewModel.onRefine("Provide an alternative translation with different word choices.")
+            .help("⌘3 — formal")
+
+            Button { viewModel.onRefine("Provide an alternative translation with different word choices.") } label: {
+                Label("別案", systemImage: "arrow.triangle.2.circlepath")
             }
+            .help("⌘4 — alternative")
+
+            if viewModel.canUndo {
+                Button { viewModel.onUndo() } label: {
+                    Label("Undo", systemImage: "arrow.uturn.backward")
+                }
+                .help("⌘Z — revert refine")
+            }
+
             Spacer()
-            Button("📚 用語追加") {
+
+            Button {
                 newTerm = ""
                 newTrans = ""
                 newPreserve = false
                 showGlossaryPopover = true
+            } label: {
+                Label("用語追加", systemImage: "book.closed.fill")
             }
             .popover(isPresented: $showGlossaryPopover, arrowEdge: .top) {
                 addGlossaryPopover
@@ -253,51 +340,7 @@ struct PopupView: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .font(.caption)
         .disabled(viewModel.isRefining)
-    }
-
-    // MARK: - Action bar
-
-    private var actionBar: some View {
-        HStack(spacing: 6) {
-            Button(action: insertAction) {
-                HStack(spacing: 4) {
-                    Text(insertLabel)
-                    Text("↵").font(.system(size: 10))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-            }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(!viewModel.hasAnyTranslation)
-            .keyboardShortcut(.defaultAction)
-
-            Button(action: copyAction) {
-                Text("📋 コピー")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-            }
-            .buttonStyle(SecondaryButtonStyle())
-            .disabled(!viewModel.hasAnyTranslation)
-
-            Button(action: viewModel.onClose) {
-                HStack(spacing: 4) {
-                    Text("閉じる")
-                    Text("Esc").font(.system(size: 10))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-            }
-            .buttonStyle(SecondaryButtonStyle())
-            .keyboardShortcut(.cancelAction)
-        }
-    }
-
-    private var insertLabel: String {
-        if case .ok = viewModel.geminiState { return "↩ 挿入 (Gemini)" }
-        if case .ok = viewModel.deepLState { return "↩ 挿入 (DeepL)" }
-        return "↩ 挿入"
     }
 
     // MARK: - Add to glossary popover
@@ -342,6 +385,56 @@ struct PopupView: View {
         }
         .padding(16)
         .frame(width: 380)
+        .onDisappear {
+            newTerm = ""
+            newTrans = ""
+            newPreserve = false
+        }
+    }
+
+    // MARK: - Action bar
+
+    private var actionBar: some View {
+        HStack(spacing: 6) {
+            Button(action: insertAction) {
+                HStack(spacing: 4) {
+                    Image(systemName: "return")
+                    Text(insertLabel)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(!viewModel.hasAnyTranslation)
+            .keyboardShortcut(.defaultAction)
+
+            Button(action: copyAction) {
+                Label("コピー", systemImage: "doc.on.doc")
+                    .labelStyle(.titleAndIcon)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .disabled(!viewModel.hasAnyTranslation)
+
+            Button(action: viewModel.onClose) {
+                Label("閉じる", systemImage: "xmark")
+                    .labelStyle(.titleAndIcon)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .keyboardShortcut(.cancelAction)
+        }
+    }
+
+    private var insertLabel: String {
+        if case .ok = viewModel.geminiState { return "挿入 (Gemini)" }
+        if case .ok = viewModel.deepLState { return "挿入 (DeepL)" }
+        return "挿入"
     }
 
     private func insertAction() {
@@ -354,31 +447,5 @@ struct PopupView: View {
         let text = viewModel.primaryInsertText
         guard !text.isEmpty else { return }
         viewModel.onCopy(text)
-    }
-}
-
-struct PrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(configuration.isPressed
-                ? Color.accentColor.opacity(0.7)
-                : Color.accentColor)
-            .foregroundColor(.white)
-            .cornerRadius(8)
-    }
-}
-
-struct SecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(configuration.isPressed
-                ? Color.gray.opacity(0.2)
-                : Color(NSColor.controlBackgroundColor))
-            .foregroundColor(.primary)
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color(NSColor.separatorColor), lineWidth: 1)
-            )
     }
 }

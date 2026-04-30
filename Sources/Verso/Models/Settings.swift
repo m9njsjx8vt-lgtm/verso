@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 
+@MainActor
 final class AppSettings: ObservableObject {
     @Published var apiKey: String {
         didSet { SecretsStore.set(apiKey, forKey: "geminiApiKey") }

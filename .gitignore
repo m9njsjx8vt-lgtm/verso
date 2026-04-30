@@ -9,7 +9,8 @@ xcuserdata/
 *.xccheckout
 
 # XcodeGen-generated
-Sources/Translator/Generated-Info.plist
+Sources/Verso/Generated-Info.plist
+Sources/Verso/Generated.xcconfig
 
 # Swift Package Manager
 .build/

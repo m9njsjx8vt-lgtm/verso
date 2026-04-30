@@ -19,13 +19,15 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.3.4</string>
+	<string>0.4.0</string>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>8</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAccessibilityUsageDescription</key>
+	<string>Verso watches for ⌘C×2 and ⌥⇧C globally so you can translate from any app. It does NOT log keystrokes.</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Verso pastes translated text into your active application using keyboard events.</string>
 	<key>NSHighResolutionCapable</key>

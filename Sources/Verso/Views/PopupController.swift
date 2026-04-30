@@ -9,10 +9,16 @@ final class PopupController {
     private let deepLClient = DeepLClient()
     private var window: PopupWindow?
     private var sourceApp: NSRunningApplication?
-    private var currentTaskId: Int = 0
     private var currentViewModel: PopupViewModel?
-    private var currentFromFull: String = ""
-    private var currentToFull: String = ""
+
+    /// Cancellable in-flight tasks for the current popup
+    private var deepLTask: Task<Void, Never>?
+    private var geminiTask: Task<Void, Never>?
+    private var refineTask: Task<Void, Never>?
+
+    /// Captured language pair for the active popup (used by refine + retry)
+    private var activeLangPair: LanguageDetector.Pair?
+    private var activeOriginal: String = ""
 
     init(settings: AppSettings, glossary: Glossary) {
         self.settings = settings
@@ -21,14 +27,10 @@ final class PopupController {
 
     func show(originalText: String) {
         sourceApp = NSWorkspace.shared.frontmostApplication
+        activeOriginal = originalText
 
-        let isJa = Self.isJapanese(originalText)
-        let fromShort = isJa ? "JA" : "EN"
-        let toShort = isJa ? "EN" : "JA"
-        let fromFull = isJa ? "Japanese" : "English"
-        let toFull = isJa ? "English" : "Japanese"
-        currentFromFull = fromFull
-        currentToFull = toFull
+        let pair = LanguageDetector.detect(originalText)
+        activeLangPair = pair
 
         let deepLConfigured = !settings.deeplApiKey.isEmpty
 
@@ -36,8 +38,8 @@ final class PopupController {
 
         let viewModel = PopupViewModel(
             originalText: originalText,
-            fromLang: fromShort,
-            toLang: toShort,
+            fromLang: pair.sourceShort,
+            toLang: pair.targetShort,
             deepLConfigured: deepLConfigured,
             onInsert: { [weak self] translation in
                 self?.insertAndClose(translation)
@@ -59,6 +61,12 @@ final class PopupController {
                     translation: translation,
                     preserveAsIs: preserve
                 )
+            },
+            onUndo: { [weak self] in
+                self?.undoLastRefine()
+            },
+            onRetry: { [weak self] in
+                self?.retry()
             }
         )
         currentViewModel = viewModel
@@ -67,83 +75,113 @@ final class PopupController {
             rootView: PopupView(viewModel: viewModel),
             onResignKey: { [weak self] in
                 self?.close(restoreFocus: false)
-            },
-            preferredHeight: deepLConfigured ? 560 : 460
+            }
         )
         window = popup
         popup.showAtMouse()
 
-        currentTaskId += 1
-        let taskId = currentTaskId
+        startInitialTranslations(viewModel: viewModel)
+    }
+
+    private func startInitialTranslations(viewModel: PopupViewModel) {
+        // Cancel any prior tasks (defensive — close() already nilled them)
+        deepLTask?.cancel(); geminiTask?.cancel()
+
+        guard let pair = activeLangPair else { return }
+        let originalText = activeOriginal
+        let appHint = sourceApp?.localizedName
 
         // DeepL
-        if deepLConfigured {
-            Task { @MainActor in
+        if !settings.deeplApiKey.isEmpty, let deepLSrc = pair.deepLSource {
+            deepLTask = Task { @MainActor [weak self, weak viewModel] in
+                guard let self = self, let viewModel = viewModel else { return }
                 do {
-                    let preview = try await deepLClient.translate(
+                    let preview = try await self.deepLClient.translate(
                         text: originalText,
-                        sourceLang: DeepLClient.deepLLang(for: fromFull),
-                        targetLang: DeepLClient.deepLLang(for: toFull),
-                        apiKey: settings.deeplApiKey
+                        sourceLang: deepLSrc,
+                        targetLang: pair.deepLTarget,
+                        apiKey: self.settings.deeplApiKey
                     )
-                    guard taskId == self.currentTaskId else { return }
+                    if Task.isCancelled { return }
                     viewModel.deepLState = .ok(preview)
                 } catch {
-                    guard taskId == self.currentTaskId else { return }
+                    if Task.isCancelled { return }
                     viewModel.deepLState = .failed(error.localizedDescription)
                 }
             }
         }
 
         // Gemini
-        Task { @MainActor in
+        geminiTask = Task { @MainActor [weak self, weak viewModel] in
+            guard let self = self, let viewModel = viewModel else { return }
             do {
-                let translation = try await geminiClient.translate(
+                let translation = try await self.geminiClient.translate(
                     text: originalText,
-                    from: fromFull,
-                    to: toFull,
-                    context: settings.translatorContext,
-                    glossary: glossary.formattedForPrompt(),
-                    model: settings.model,
-                    apiKey: settings.apiKey
+                    from: pair.sourceFull,
+                    to: pair.targetFull,
+                    context: self.settings.translatorContext,
+                    glossary: self.glossary.formattedForPrompt(),
+                    sourceAppHint: appHint,
+                    model: self.settings.model,
+                    apiKey: self.settings.apiKey
                 )
-                guard taskId == self.currentTaskId else { return }
+                if Task.isCancelled { return }
                 viewModel.geminiState = .ok(translation)
             } catch {
-                guard taskId == self.currentTaskId else { return }
+                if Task.isCancelled { return }
                 viewModel.geminiState = .failed(error.localizedDescription)
             }
         }
     }
 
     private func refine(instruction: String) {
-        guard let vm = currentViewModel, vm.isGeminiOk else { return }
-        let snapshotTranslation = vm.geminiText
+        guard let vm = currentViewModel, vm.isGeminiOk,
+              let pair = activeLangPair else { return }
+        let snapshot = vm.geminiText
+        vm.undoStack.append(snapshot)
         vm.isRefining = true
-        currentTaskId += 1
-        let taskId = currentTaskId
-        Task { @MainActor in
+
+        refineTask?.cancel()
+        refineTask = Task { @MainActor [weak self, weak vm] in
+            guard let self = self, let vm = vm else { return }
             do {
-                let refined = try await geminiClient.refine(
+                let refined = try await self.geminiClient.refine(
                     originalText: vm.originalText,
-                    currentTranslation: snapshotTranslation,
+                    currentTranslation: snapshot,
                     instruction: instruction,
-                    from: currentFromFull,
-                    to: currentToFull,
-                    context: settings.translatorContext,
-                    glossary: glossary.formattedForPrompt(),
-                    model: settings.model,
-                    apiKey: settings.apiKey
+                    from: pair.sourceFull,
+                    to: pair.targetFull,
+                    context: self.settings.translatorContext,
+                    glossary: self.glossary.formattedForPrompt(),
+                    model: self.settings.model,
+                    apiKey: self.settings.apiKey
                 )
-                guard taskId == self.currentTaskId else { return }
+                if Task.isCancelled { vm.isRefining = false; return }
                 vm.geminiState = .ok(refined)
                 vm.isRefining = false
             } catch {
-                guard taskId == self.currentTaskId else { return }
+                if Task.isCancelled { vm.isRefining = false; return }
                 vm.geminiState = .failed(error.localizedDescription)
                 vm.isRefining = false
+                // Revert the snapshot push since refine failed
+                if vm.undoStack.last == snapshot {
+                    vm.undoStack.removeLast()
+                }
             }
         }
+    }
+
+    private func undoLastRefine() {
+        guard let vm = currentViewModel, !vm.undoStack.isEmpty else { return }
+        let previous = vm.undoStack.removeLast()
+        vm.geminiState = .ok(previous)
+    }
+
+    private func retry() {
+        guard let vm = currentViewModel else { return }
+        vm.geminiState = .loading
+        if vm.showDeepLPanel { vm.deepLState = .loading }
+        startInitialTranslations(viewModel: vm)
     }
 
     private func insertAndClose(_ translation: String) {
@@ -151,6 +189,8 @@ final class PopupController {
         NSPasteboard.general.setString(translation, forType: .string)
 
         let app = sourceApp
+        cancelAllTasks()
+        window?.persistCurrentSize()
         window?.orderOut(nil)
         window = nil
         currentViewModel = nil
@@ -165,7 +205,9 @@ final class PopupController {
 
     func close(restoreFocus: Bool) {
         let app = sourceApp
-        window?.persistCurrentSize()  // remember last size for next popup
+        cancelAllTasks()
+        if let vm = currentViewModel { vm.isRefining = false }
+        window?.persistCurrentSize()
         window?.orderOut(nil)
         window = nil
         currentViewModel = nil
@@ -174,16 +216,9 @@ final class PopupController {
         }
     }
 
-    private static func isJapanese(_ text: String) -> Bool {
-        for scalar in text.unicodeScalars {
-            let v = scalar.value
-            if (0x3040...0x309F).contains(v)
-                || (0x30A0...0x30FF).contains(v)
-                || (0x4E00...0x9FFF).contains(v)
-            {
-                return true
-            }
-        }
-        return false
+    private func cancelAllTasks() {
+        deepLTask?.cancel(); deepLTask = nil
+        geminiTask?.cancel(); geminiTask = nil
+        refineTask?.cancel(); refineTask = nil
     }
 }

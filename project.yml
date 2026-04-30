@@ -11,7 +11,9 @@ settings:
     CODE_SIGN_STYLE: Automatic
     CODE_SIGN_IDENTITY: "-"
     DEVELOPMENT_TEAM: ""
-    ENABLE_HARDENED_RUNTIME: YES
+    # NOTE: Disabled until proper signing is in place. Hardened runtime + ad-hoc
+    # signature triggers Gatekeeper rejection. Re-enable when shipping signed builds.
+    ENABLE_HARDENED_RUNTIME: NO
     PRODUCT_NAME: Verso
     PRODUCT_BUNDLE_IDENTIFIER: com.tomoro.verso
 targets:
@@ -25,13 +27,14 @@ targets:
       properties:
         LSUIElement: true
         LSMinimumSystemVersion: "13.0"
-        CFBundleShortVersionString: "0.3.4"
-        CFBundleVersion: "7"
+        CFBundleShortVersionString: "0.4.0"
+        CFBundleVersion: "8"
         CFBundleDisplayName: Verso
         CFBundleIconFile: AppIcon
         NSHighResolutionCapable: true
         NSAppleEventsUsageDescription: "Verso pastes translated text into your active application using keyboard events."
         NSScreenCaptureUsageDescription: "Verso captures the area you select to OCR and translate the text in it."
+        NSAccessibilityUsageDescription: "Verso watches for ⌘C×2 and ⌥⇧C globally so you can translate from any app. It does NOT log keystrokes."
         NSHumanReadableCopyright: "© 2026 Tomoro Iwasaki"
     entitlements:
       path: Sources/Verso/Verso.entitlements

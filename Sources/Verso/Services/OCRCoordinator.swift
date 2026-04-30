@@ -60,6 +60,18 @@ final class OCRCoordinator {
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
-        alert.runModal()
+
+        // If the error mentions Screen Recording, offer to open System Settings
+        if message.lowercased().contains("screen recording") || message.contains("キャプチャ") {
+            alert.addButton(withTitle: "Open Settings")
+            let response = alert.runModal()
+            if response == .alertSecondButtonReturn {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        } else {
+            alert.runModal()
+        }
     }
 }

@@ -31,17 +31,33 @@ enum SecretsStore {
         } else {
             dict[key] = value
         }
+        // Write to a temp file with 0600 perms FIRST, then atomic rename.
+        // This avoids the brief world-readable window of write-then-chmod.
+        let tmpURL = storeURL.deletingLastPathComponent()
+            .appendingPathComponent("secrets.json.tmp")
         do {
-            let data = try JSONEncoder().encode(dict)
-            try data.write(to: storeURL, options: [.atomic])
-            // Restrict to owner read/write only
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(dict)
+
+            // Create empty file with 0600 perms first
+            FileManager.default.createFile(
+                atPath: tmpURL.path,
+                contents: nil,
+                attributes: [.posixPermissions: 0o600]
+            )
+            try data.write(to: tmpURL, options: [.atomic])
+            // Verify perms (in case createFile didn't apply them in some edge case)
             try FileManager.default.setAttributes(
                 [.posixPermissions: 0o600],
-                ofItemAtPath: storeURL.path
+                ofItemAtPath: tmpURL.path
             )
+            // Atomic rename
+            _ = try FileManager.default.replaceItemAt(storeURL, withItemAt: tmpURL)
             return true
         } catch {
             print("[secrets] save error: \(error)")
+            try? FileManager.default.removeItem(at: tmpURL)
             return false
         }
     }

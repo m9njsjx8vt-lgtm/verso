@@ -12,7 +12,11 @@ struct GlossaryEntry: Identifiable, Codable, Hashable {
 
 @MainActor
 final class Glossary: ObservableObject {
-    @Published var entries: [GlossaryEntry] = []
+    @Published var entries: [GlossaryEntry] = [] {
+        didSet { cachedFormattedPrompt = nil }
+    }
+
+    private var cachedFormattedPrompt: String?
 
     private let storeURL: URL = {
         let support = FileManager.default
@@ -52,18 +56,24 @@ final class Glossary: ObservableObject {
         }
     }
 
-    /// Markdown-style block to inject into the LLM prompt
+    /// Markdown-style block to inject into the LLM prompt. Cached for re-use.
     func formattedForPrompt() -> String {
-        guard !entries.isEmpty else { return "" }
+        if let cached = cachedFormattedPrompt { return cached }
+        guard !entries.isEmpty else {
+            cachedFormattedPrompt = ""
+            return ""
+        }
         var lines: [String] = []
         for e in entries {
             if e.preserveAsIs {
-                lines.append("- \"\(e.term)\" — preserve verbatim, do NOT translate")
+                lines.append("- Term \"\(e.term)\" — preserve verbatim, do NOT translate or modify.")
             } else {
-                lines.append("- \"\(e.term)\" ↔ \"\(e.translation)\"")
+                lines.append("- Term \"\(e.term)\" → translate as \"\(e.translation)\" (do not use alternatives).")
             }
         }
-        return lines.joined(separator: "\n")
+        let result = lines.joined(separator: "\n")
+        cachedFormattedPrompt = result
+        return result
     }
 
     private func load() {
@@ -74,13 +84,24 @@ final class Glossary: ObservableObject {
     }
 
     private func save() {
+        cachedFormattedPrompt = nil
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(entries)
             try data.write(to: storeURL, options: [.atomic])
         } catch {
+            // Surface to user via NotificationCenter so SwiftUI can show alert
             print("[glossary] save error: \(error)")
+            NotificationCenter.default.post(
+                name: .versoGlossarySaveFailed,
+                object: nil,
+                userInfo: ["error": error.localizedDescription]
+            )
         }
     }
+}
+
+extension Notification.Name {
+    static let versoGlossarySaveFailed = Notification.Name("versoGlossarySaveFailed")
 }

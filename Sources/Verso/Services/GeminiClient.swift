@@ -3,6 +3,8 @@ import Foundation
 enum GeminiError: LocalizedError {
     case missingApiKey
     case httpError(Int, String)
+    case rateLimited
+    case safetyFiltered(String)
     case invalidResponse
     case timedOut
 
@@ -13,16 +15,19 @@ enum GeminiError: LocalizedError {
         case .httpError(let code, let body):
             let snippet = String(body.prefix(300))
             return "HTTP \(code)\n\(snippet)"
+        case .rateLimited:
+            return "レート制限に到達しました。しばらく待ってください（または Settings で別モデルへ切替）。"
+        case .safetyFiltered(let reason):
+            return "Gemini が翻訳を拒否しました: \(reason)"
         case .invalidResponse:
             return "APIレスポンス解析失敗"
         case .timedOut:
-            return "タイムアウト（12秒）。ネットワーク or APIが応答しません。"
+            return "タイムアウト。ネットワーク or APIが応答しません。"
         }
     }
 }
 
 final class GeminiClient {
-    private let timeout: TimeInterval = 12
 
     // MARK: - Translate
 
@@ -32,20 +37,19 @@ final class GeminiClient {
         to: String,
         context: String?,
         glossary: String?,
+        sourceAppHint: String?,
         model: String,
         apiKey: String
     ) async throws -> String {
         let prompt = Self.buildTranslatePrompt(
             text: text, from: from, to: to,
-            context: context, glossary: glossary
+            context: context, glossary: glossary, sourceAppHint: sourceAppHint
         )
-        return try await call(prompt: prompt, model: model, apiKey: apiKey)
+        return try await callWithRetry(prompt: prompt, model: model, apiKey: apiKey, textLen: text.count)
     }
 
     // MARK: - Refine
 
-    /// Re-translate the existing translation according to a refinement instruction.
-    /// (e.g. "make it shorter", "more casual"). Keeps the same source text as ground truth.
     func refine(
         originalText: String,
         currentTranslation: String,
@@ -64,14 +68,106 @@ final class GeminiClient {
             from: from, to: to,
             context: context, glossary: glossary
         )
-        return try await call(prompt: prompt, model: model, apiKey: apiKey)
+        return try await callWithRetry(prompt: prompt, model: model, apiKey: apiKey,
+                                       textLen: originalText.count + currentTranslation.count)
     }
 
-    // MARK: - Internals
+    // MARK: - Auto-glossary extraction
 
-    private func call(prompt: String, model: String, apiKey: String) async throws -> String {
+    /// Given an original sentence, the model's translation, and the user's edited translation,
+    /// ask Gemini to extract term-mapping pairs that the user implicitly preferred.
+    /// Returns an array of (term, translation) — preserveAsIs is left for the user to decide.
+    func extractGlossaryDiff(
+        originalText: String,
+        modelTranslation: String,
+        userTranslation: String,
+        from: String,
+        to: String,
+        model: String,
+        apiKey: String
+    ) async throws -> [(term: String, translation: String)] {
+        let prompt = """
+        You are analysing a translation correction.
+
+        ORIGINAL (\(from)):
+        \(originalText)
+
+        MODEL TRANSLATION (\(to)):
+        \(modelTranslation)
+
+        USER-EDITED TRANSLATION (\(to)):
+        \(userTranslation)
+
+        Identify any **term-level corrections** the user made — typically proper nouns, acronyms, technical jargon, or preferred wording. Output a JSON array of {"term": "<source-language term>", "translation": "<user's preferred target translation>"} pairs. Only include corrections that look like reusable glossary entries (skip purely stylistic edits). If no glossary-worthy corrections, return [].
+
+        Output ONLY the JSON array. No code fence, no explanation.
+        """
+        let raw = try await callWithRetry(prompt: prompt, model: model, apiKey: apiKey,
+                                          textLen: originalText.count + userTranslation.count * 2)
+        // Strip code fences if model accidentally added them
+        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("```") {
+            if let firstNewline = trimmed.firstIndex(of: "\n") {
+                trimmed = String(trimmed[trimmed.index(after: firstNewline)...])
+            }
+            if trimmed.hasSuffix("```") {
+                trimmed = String(trimmed.dropLast(3))
+            }
+            trimmed = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard let data = trimmed.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: String]]
+        else {
+            return []
+        }
+        return array.compactMap { dict in
+            guard let term = dict["term"]?.trimmingCharacters(in: .whitespaces),
+                  let translation = dict["translation"]?.trimmingCharacters(in: .whitespaces),
+                  !term.isEmpty, !translation.isEmpty
+            else { return nil }
+            return (term, translation)
+        }
+    }
+
+    // MARK: - Networking with retry
+
+    private func callWithRetry(
+        prompt: String,
+        model: String,
+        apiKey: String,
+        textLen: Int
+    ) async throws -> String {
         guard !apiKey.isEmpty else { throw GeminiError.missingApiKey }
 
+        // Dynamic timeout: 12s base, +0.5s per 100 chars, capped at 60s
+        let timeout = min(60.0, max(12.0, 12.0 + Double(textLen) / 200.0))
+
+        var attempt = 0
+        let maxAttempts = 3
+        var lastError: Error = GeminiError.invalidResponse
+
+        while attempt < maxAttempts {
+            do {
+                return try await callOnce(prompt: prompt, model: model, apiKey: apiKey, timeout: timeout)
+            } catch GeminiError.rateLimited {
+                attempt += 1
+                lastError = GeminiError.rateLimited
+                if attempt >= maxAttempts { break }
+                // Exponential backoff: 1s, 3s, 7s
+                let delay = UInt64(pow(2.0, Double(attempt)) - 1) * 1_000_000_000
+                try? await Task.sleep(nanoseconds: delay + 1_000_000_000)
+            } catch GeminiError.timedOut where attempt == 0 {
+                attempt += 1
+                lastError = GeminiError.timedOut
+                // Single retry for transient timeout
+            } catch {
+                throw error
+            }
+        }
+        throw lastError
+    }
+
+    private func callOnce(prompt: String, model: String, apiKey: String, timeout: TimeInterval) async throws -> String {
         guard let url = URL(string:
             "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
         ) else {
@@ -101,15 +197,40 @@ final class GeminiClient {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw GeminiError.invalidResponse
         }
+        if httpResponse.statusCode == 429 {
+            throw GeminiError.rateLimited
+        }
         guard httpResponse.statusCode == 200 else {
             let errBody = String(data: data, encoding: .utf8) ?? ""
             throw GeminiError.httpError(httpResponse.statusCode, errBody)
         }
 
         guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            throw GeminiError.invalidResponse
+        }
+
+        // Check for safety filter / prompt block
+        if let promptFeedback = json["promptFeedback"] as? [String: Any],
+           let blockReason = promptFeedback["blockReason"] as? String {
+            throw GeminiError.safetyFiltered(blockReason)
+        }
+
+        guard
             let candidates = json["candidates"] as? [[String: Any]],
-            let first = candidates.first,
+            let first = candidates.first
+        else {
+            throw GeminiError.invalidResponse
+        }
+
+        // Check candidate-level safety filter
+        if let finishReason = first["finishReason"] as? String,
+           finishReason == "SAFETY" || finishReason == "RECITATION" {
+            throw GeminiError.safetyFiltered(finishReason)
+        }
+
+        guard
             let content = first["content"] as? [String: Any],
             let parts = content["parts"] as? [[String: Any]],
             let firstPart = parts.first,
@@ -125,19 +246,20 @@ final class GeminiClient {
 
     private static func buildTranslatePrompt(
         text: String, from: String, to: String,
-        context: String?, glossary: String?
+        context: String?, glossary: String?, sourceAppHint: String?
     ) -> String {
         let ctxBlock = nonEmptyBlock(title: "USER CONTEXT", body: context)
         let gloBlock = nonEmptyBlock(title: "GLOSSARY (use these specific translations consistently)",
                                      body: glossary)
+        let appBlock = sourceAppToneHint(for: sourceAppHint)
 
-        let intro = ctxBlock.isEmpty && gloBlock.isEmpty
+        let intro = ctxBlock.isEmpty && gloBlock.isEmpty && appBlock.isEmpty
             ? "You are a professional translator."
-            : "You are a personal translator for a specific user. Use the user context and glossary below so the result sounds like *that user* wrote it."
+            : "You are a personal translator for a specific user. Use the user context, glossary, and source-app hint below to produce a translation that sounds like *that user* wrote it."
 
         return """
         \(intro)
-        \(ctxBlock)\(gloBlock)
+        \(ctxBlock)\(gloBlock)\(appBlock)
         ## TASK
         Translate the following \(from) text into natural, fluent \(to). \
         Match the user's tone, terminology, and proper-noun conventions. \
@@ -179,5 +301,25 @@ final class GeminiClient {
             return ""
         }
         return "\n## \(title)\n\(body)\n"
+    }
+
+    private static func sourceAppToneHint(for appName: String?) -> String {
+        guard let name = appName?.lowercased() else { return "" }
+        let hint: String
+        switch true {
+        case name.contains("mail") || name.contains("outlook"):
+            hint = "The user copied this from an email client. Lean toward formal, polite business register."
+        case name.contains("slack") || name.contains("discord") || name.contains("teams") || name.contains("messages"):
+            hint = "The user copied this from a chat app. Lean toward casual, conversational register."
+        case name.contains("xcode") || name.contains("vscode") || name.contains("code") || name.contains("terminal") || name.contains("iterm"):
+            hint = "The user copied this from a code editor. Preserve technical terms, code identifiers, and inline code formatting verbatim."
+        case name.contains("notion") || name.contains("docs") || name.contains("word") || name.contains("pages"):
+            hint = "The user copied this from a document app. Use a balanced, readable register."
+        case name.contains("safari") || name.contains("chrome") || name.contains("firefox") || name.contains("arc"):
+            hint = "The user copied this from a web browser. Tone depends on content; default to neutral."
+        default:
+            return ""
+        }
+        return "\n## SOURCE APP HINT\n\(hint) (Source app: \(name))\n"
     }
 }
