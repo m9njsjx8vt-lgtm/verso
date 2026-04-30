@@ -21,7 +21,9 @@ final class PopupWindow: NSPanel {
 
         super.init(
             contentRect: NSRect(origin: .zero, size: restoredSize),
-            styleMask: [.titled, .closable, .resizable, .utilityWindow],
+            // Standard panel chrome (no .utilityWindow) so the green zoom button
+            // appears and edge-drag resize is fully discoverable.
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )

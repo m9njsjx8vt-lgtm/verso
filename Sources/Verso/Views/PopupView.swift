@@ -107,7 +107,14 @@ struct PopupView: View {
             actionBar
         }
         .padding(14)
-        .frame(minWidth: 500, minHeight: 380)
+        .frame(
+            minWidth: 500,
+            idealWidth: 720,
+            maxWidth: .infinity,
+            minHeight: 380,
+            idealHeight: viewModel.showDeepLPanel ? 560 : 460,
+            maxHeight: .infinity
+        )
     }
 
     // MARK: - Header
@@ -119,7 +126,7 @@ struct PopupView: View {
                 .tracking(1.0)
                 .foregroundColor(.secondary)
             Spacer()
-            Text("Esc で閉じる")
+            Text("⤡ ドラッグで拡縮  •  Esc で閉じる")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
         }
