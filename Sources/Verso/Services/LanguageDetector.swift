@@ -43,29 +43,30 @@ enum LanguageDetector {
             targetShort: target.short,
             sourceFull: detected.fullName,
             targetFull: target.fullName,
-            deepLTarget: target.deepL,
-            deepLSource: detected.deepL
+            deepLTarget: target.deepLTarget,
+            deepLSource: detected.deepLSource
         )
     }
 
     // MARK: - Internal
 
     private struct LangInfo {
-        let short: String       // "JA"
-        let fullName: String    // "Japanese"
-        let deepL: String       // "JA"
+        let short: String           // "JA"   — popup header
+        let fullName: String        // "Japanese" — LLM prompt
+        let deepLSource: String     // "EN"  — DeepL source_lang accepts NO region suffix
+        let deepLTarget: String     // "EN-US" — DeepL target_lang accepts region suffix
     }
 
-    private static let english   = LangInfo(short: "EN", fullName: "English",  deepL: "EN-US")
-    private static let japanese  = LangInfo(short: "JA", fullName: "Japanese", deepL: "JA")
-    private static let chinese   = LangInfo(short: "ZH", fullName: "Chinese",  deepL: "ZH")
-    private static let korean    = LangInfo(short: "KO", fullName: "Korean",   deepL: "KO")
-    private static let spanish   = LangInfo(short: "ES", fullName: "Spanish",  deepL: "ES")
-    private static let french    = LangInfo(short: "FR", fullName: "French",   deepL: "FR")
-    private static let german    = LangInfo(short: "DE", fullName: "German",   deepL: "DE")
-    private static let italian   = LangInfo(short: "IT", fullName: "Italian",  deepL: "IT")
-    private static let portuguese = LangInfo(short: "PT", fullName: "Portuguese", deepL: "PT-PT")
-    private static let russian   = LangInfo(short: "RU", fullName: "Russian",  deepL: "RU")
+    private static let english   = LangInfo(short: "EN", fullName: "English",  deepLSource: "EN", deepLTarget: "EN-US")
+    private static let japanese  = LangInfo(short: "JA", fullName: "Japanese", deepLSource: "JA", deepLTarget: "JA")
+    private static let chinese   = LangInfo(short: "ZH", fullName: "Chinese",  deepLSource: "ZH", deepLTarget: "ZH")
+    private static let korean    = LangInfo(short: "KO", fullName: "Korean",   deepLSource: "KO", deepLTarget: "KO")
+    private static let spanish   = LangInfo(short: "ES", fullName: "Spanish",  deepLSource: "ES", deepLTarget: "ES")
+    private static let french    = LangInfo(short: "FR", fullName: "French",   deepLSource: "FR", deepLTarget: "FR")
+    private static let german    = LangInfo(short: "DE", fullName: "German",   deepLSource: "DE", deepLTarget: "DE")
+    private static let italian   = LangInfo(short: "IT", fullName: "Italian",  deepLSource: "IT", deepLTarget: "IT")
+    private static let portuguese = LangInfo(short: "PT", fullName: "Portuguese", deepLSource: "PT", deepLTarget: "PT-PT")
+    private static let russian   = LangInfo(short: "RU", fullName: "Russian",  deepLSource: "RU", deepLTarget: "RU")
 
     private static let mapping: [String: LangInfo] = [
         // NLLanguage raw values
