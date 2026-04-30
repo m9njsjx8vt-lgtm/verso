@@ -8,11 +8,12 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
-    CODE_SIGN_STYLE: Automatic
-    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "Verso Self-Signed"
     DEVELOPMENT_TEAM: ""
-    # NOTE: Disabled until proper signing is in place. Hardened runtime + ad-hoc
-    # signature triggers Gatekeeper rejection. Re-enable when shipping signed builds.
+    # Self-signed identity gives a STABLE signature across rebuilds, so macOS
+    # doesn't revoke Accessibility trust each time we rebuild. Switch this to a
+    # real Developer ID identity when enrolling in Apple Developer Program.
     ENABLE_HARDENED_RUNTIME: NO
     PRODUCT_NAME: Verso
     PRODUCT_BUNDLE_IDENTIFIER: com.tomoro.verso
