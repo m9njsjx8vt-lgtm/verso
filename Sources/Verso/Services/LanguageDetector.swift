@@ -20,13 +20,17 @@ enum LanguageDetector {
     }
 
     static func detect(_ text: String, defaultTargetForEnglish: String = "JA") -> Pair {
-        // 1. Try Apple NL framework
-        let recognizer = NLLanguageRecognizer()
-        recognizer.processString(String(text.prefix(2000)))   // sample first 2K chars
-        let dominant = recognizer.dominantLanguage
-
-        // 2. Map to our internal model
-        let detected = (dominant.flatMap { mapping[$0.rawValue] }) ?? fallback(text)
+        // 1. STRONG SCRIPT SIGNALS first — these are unambiguous and beat the NL recognizer
+        //    (NL gets confused by mixed-language text, e.g. JA prose with embedded English code)
+        let detected: LangInfo
+        if let scriptHit = strongScriptSignal(text) {
+            detected = scriptHit
+        } else {
+            // 2. Fall back to Apple NL framework for Latin-script languages
+            let recognizer = NLLanguageRecognizer()
+            recognizer.processString(String(text.prefix(2000)))
+            detected = (recognizer.dominantLanguage.flatMap { mapping[$0.rawValue] }) ?? fallback(text)
+        }
 
         // 3. Pick target
         // - If source is English → target is user's preferred (default Japanese)
@@ -79,28 +83,30 @@ enum LanguageDetector {
         "PT": portuguese, "RU": russian,
     ]
 
-    /// Heuristic fallback when NL framework returns nothing
-    private static func fallback(_ text: String) -> LangInfo {
+    /// Strong, unambiguous script signals: hiragana/katakana = always Japanese,
+    /// hangul = always Korean. CJK ideographs alone are NOT enough (could be Chinese).
+    private static func strongScriptSignal(_ text: String) -> LangInfo? {
         for scalar in text.unicodeScalars {
             let v = scalar.value
-            if (0x3040...0x309F).contains(v)   // Hiragana
-                || (0x30A0...0x30FF).contains(v) // Katakana
-            {
+            // Hiragana (0x3040–0x309F) or Katakana (0x30A0–0x30FF) → definitely Japanese
+            if (0x3040...0x309F).contains(v) || (0x30A0...0x30FF).contains(v) {
                 return japanese
             }
+            // Hangul Syllables → definitely Korean
+            if (0xAC00...0xD7AF).contains(v) {
+                return korean
+            }
         }
-        // CJK ideographs without kana → could be Chinese
+        return nil
+    }
+
+    /// Last-resort fallback (after both strong signals + NL recognizer). Treats CJK
+    /// ideographs as Chinese, otherwise English.
+    private static func fallback(_ text: String) -> LangInfo {
         for scalar in text.unicodeScalars {
             let v = scalar.value
             if (0x4E00...0x9FFF).contains(v) {
                 return chinese
-            }
-        }
-        // Hangul
-        for scalar in text.unicodeScalars {
-            let v = scalar.value
-            if (0xAC00...0xD7AF).contains(v) {
-                return korean
             }
         }
         return english
