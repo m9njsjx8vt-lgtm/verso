@@ -6,14 +6,31 @@ enum DeepLError: LocalizedError {
     case rateLimited
     case quotaExceeded
     case invalidResponse
+    case offline
 
     var errorDescription: String? {
         switch self {
-        case .missingApiKey: return "DeepL API key not configured."
-        case .httpError(let code, let body): return "DeepL HTTP \(code): \(body.prefix(200))"
-        case .rateLimited: return "DeepL rate-limited."
-        case .quotaExceeded: return "DeepL monthly quota exceeded."
-        case .invalidResponse: return "DeepL response parse failure"
+        case .missingApiKey:
+            return "DeepL APIキーが未設定。任意機能なので空欄でも全体は動きます。"
+        case .offline:
+            return "オフライン。ネットワーク接続を確認してください。"
+        case .rateLimited:
+            return "DeepL rate-limit。少し待ってから再試行を。"
+        case .quotaExceeded:
+            return "DeepL 月間50万文字の無料枠を使い切りました。来月リセット、または Pro プランへ。"
+        case .invalidResponse:
+            return "DeepL から予期しない応答形式。"
+        case .httpError(let code, let body):
+            switch code {
+            case 401, 403:
+                return "DeepL認証失敗。Settings で APIキーを再確認してください。"
+            case 456:
+                return "DeepL 月間無料枠超過。"
+            case 500...599:
+                return "DeepL サーバーエラー。少し待ってから再試行を。"
+            default:
+                return "DeepL HTTP \(code): \(body.prefix(200))"
+            }
         }
     }
 }

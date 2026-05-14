@@ -19,6 +19,7 @@ final class PopupViewModel: ObservableObject {
     @Published var toast: String?
     @Published var stayOpen: Bool
     @Published var privacyMode: Bool
+    @Published var conversationDepth: Int
 
     let fromLang: String
     let toLang: String
@@ -33,14 +34,14 @@ final class PopupViewModel: ObservableObject {
     let onSaveEdit: (String) -> Void
     let onChangeTarget: (String) -> Void
     let onTogglePin: () -> Void
+    let onSpeak: (String) -> Void
+    let onTryWithPro: () -> Void
+    let onFurigana: () -> Void
 
     init(
-        originalText: String,
-        fromLang: String,
-        toLang: String,
-        deepLConfigured: Bool,
-        stayOpen: Bool,
-        privacyMode: Bool,
+        originalText: String, fromLang: String, toLang: String,
+        deepLConfigured: Bool, stayOpen: Bool, privacyMode: Bool,
+        conversationDepth: Int,
         onInsert: @escaping (String) -> Void,
         onCopy: @escaping (String) -> Void,
         onClose: @escaping () -> Void,
@@ -50,7 +51,10 @@ final class PopupViewModel: ObservableObject {
         onRetry: @escaping () -> Void,
         onSaveEdit: @escaping (String) -> Void,
         onChangeTarget: @escaping (String) -> Void,
-        onTogglePin: @escaping () -> Void
+        onTogglePin: @escaping () -> Void,
+        onSpeak: @escaping (String) -> Void,
+        onTryWithPro: @escaping () -> Void,
+        onFurigana: @escaping () -> Void
     ) {
         self.originalText = originalText
         self.fromLang = fromLang
@@ -58,6 +62,7 @@ final class PopupViewModel: ObservableObject {
         self.deepLState = deepLConfigured ? .loading : .notConfigured
         self.stayOpen = stayOpen
         self.privacyMode = privacyMode
+        self.conversationDepth = conversationDepth
         self.onInsert = onInsert
         self.onCopy = onCopy
         self.onClose = onClose
@@ -68,6 +73,9 @@ final class PopupViewModel: ObservableObject {
         self.onSaveEdit = onSaveEdit
         self.onChangeTarget = onChangeTarget
         self.onTogglePin = onTogglePin
+        self.onSpeak = onSpeak
+        self.onTryWithPro = onTryWithPro
+        self.onFurigana = onFurigana
     }
 
     var primaryInsertText: String {
@@ -92,13 +100,8 @@ final class PopupViewModel: ObservableObject {
         return ""
     }
 
-    var showDeepLPanel: Bool {
-        deepLState != .notConfigured
-    }
-
-    var canUndo: Bool {
-        !undoStack.isEmpty && !isRefining
-    }
+    var showDeepLPanel: Bool { deepLState != .notConfigured }
+    var canUndo: Bool { !undoStack.isEmpty && !isRefining }
 
     func showToast(_ message: String, duration: TimeInterval = 2.5) {
         toast = message
@@ -123,60 +126,36 @@ struct PopupView: View {
                 header
                 originalPanel
                 if viewModel.showDeepLPanel {
-                    providerPanel(
-                        title: "DeepL",
-                        icon: "bolt.fill",
-                        color: .blue,
-                        state: viewModel.deepLState,
-                        isCompact: true,
-                        editable: false
-                    )
+                    providerPanel(title: "DeepL", icon: "bolt.fill", color: .blue,
+                                  state: viewModel.deepLState, isCompact: true, editable: false)
                 }
                 providerPanel(
-                    title: viewModel.isRefining ? "Gemini  •  REFINING…" : "Gemini",
-                    icon: "sparkles",
-                    color: .purple,
-                    state: viewModel.geminiState,
-                    isCompact: false,
-                    editable: true
-                )
-                if viewModel.isGeminiOk && !viewModel.isEditing {
-                    refineBar
-                }
+                    title: viewModel.isRefining ? "Gemini  •  WORKING…" : "Gemini",
+                    icon: "sparkles", color: .purple,
+                    state: viewModel.geminiState, isCompact: false, editable: true)
+                if viewModel.isGeminiOk && !viewModel.isEditing { refineBar }
                 actionBar
             }
             .padding(16)
 
             if let toast = viewModel.toast {
-                Text(toast)
-                    .font(.callout)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Color.black.opacity(0.85))
-                    .cornerRadius(8)
+                Text(toast).font(.callout).foregroundColor(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Color.black.opacity(0.85)).cornerRadius(8)
                     .padding(.top, 12)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.toast)
-        .frame(
-            minWidth: 500,
-            idealWidth: 720,
-            maxWidth: .infinity,
-            minHeight: 380,
-            idealHeight: viewModel.showDeepLPanel ? 580 : 480,
-            maxHeight: .infinity
-        )
+        .frame(minWidth: 500, idealWidth: 720, maxWidth: .infinity,
+               minHeight: 380, idealHeight: viewModel.showDeepLPanel ? 580 : 480, maxHeight: .infinity)
         .background(keyboardShortcuts)
     }
 
     private var keyboardShortcuts: some View {
         ZStack {
             if viewModel.canUndo {
-                Button("") { viewModel.onUndo() }
-                    .keyboardShortcut("z", modifiers: .command)
-                    .opacity(0)
+                Button("") { viewModel.onUndo() }.keyboardShortcut("z", modifiers: .command).opacity(0)
             }
             if viewModel.isGeminiOk && !viewModel.isEditing {
                 Button("") { viewModel.onRefine("Make the translation shorter and more concise while preserving meaning.") }
@@ -191,25 +170,16 @@ struct PopupView: View {
         }
     }
 
-    // MARK: - Header (with target language picker + pin)
+    // MARK: - Header
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text(viewModel.fromLang)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .tracking(1.0)
-                .foregroundColor(.secondary)
-
-            Image(systemName: "arrow.right")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            Text(viewModel.fromLang).font(.caption).fontWeight(.semibold).tracking(1.0).foregroundColor(.secondary)
+            Image(systemName: "arrow.right").font(.caption2).foregroundColor(.secondary)
 
             Menu {
                 ForEach(LanguageDetector.availableTargets, id: \.short) { lang in
-                    Button {
-                        viewModel.onChangeTarget(lang.short)
-                    } label: {
+                    Button { viewModel.onChangeTarget(lang.short) } label: {
                         if lang.short == viewModel.toLang {
                             Label("\(lang.short)  \(lang.fullName)", systemImage: "checkmark")
                         } else {
@@ -219,38 +189,33 @@ struct PopupView: View {
                 }
             } label: {
                 HStack(spacing: 2) {
-                    Text(viewModel.toLang)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .tracking(1.0)
-                    Image(systemName: "chevron.down")
-                        .font(.caption2)
+                    Text(viewModel.toLang).font(.caption).fontWeight(.semibold).tracking(1.0)
+                    Image(systemName: "chevron.down").font(.caption2)
                 }
                 .foregroundColor(.accentColor)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+
+            if viewModel.conversationDepth > 0 {
+                Text("·  会話 \(viewModel.conversationDepth) 往復")
+                    .font(.caption2).foregroundColor(.accentColor.opacity(0.8))
+            }
 
             Spacer()
 
             if viewModel.privacyMode {
-                Image(systemName: "lock.fill")
-                    .foregroundColor(.orange)
-                    .font(.caption2)
+                Image(systemName: "lock.fill").foregroundColor(.orange).font(.caption2)
                     .help("Privacy mode: not saved to history")
             }
-
             Button { viewModel.onTogglePin() } label: {
                 Image(systemName: viewModel.stayOpen ? "pin.fill" : "pin")
                     .foregroundColor(viewModel.stayOpen ? .accentColor : .secondary)
             }
             .buttonStyle(.borderless)
-            .help(viewModel.stayOpen ? "Pinned (won't auto-dismiss)" : "Pin to keep open")
+            .help(viewModel.stayOpen ? "📌 Pinned (会話モード)" : "Pin to keep open")
 
-            Text(viewModel.stayOpen ? "📌 Pinned  •  Esc で閉じる" : "⤡ ドラッグで拡縮  •  Esc で閉じる")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            Text(viewModel.stayOpen ? "📌 会話モード  •  Esc で閉じる" : "⤡ ドラッグで拡縮  •  Esc で閉じる")
+                .font(.caption2).foregroundColor(.secondary)
         }
     }
 
@@ -258,23 +223,15 @@ struct PopupView: View {
 
     private var originalPanel: some View {
         ScrollView {
-            Text(viewModel.originalText)
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .textSelection(.enabled)
+            Text(viewModel.originalText).font(.callout).foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(12).textSelection(.enabled)
         }
         .frame(maxHeight: 90)
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(10)
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color(NSColor.separatorColor), lineWidth: 1)
-        )
+        .background(Color(NSColor.controlBackgroundColor)).cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(NSColor.separatorColor), lineWidth: 1))
     }
 
-    // MARK: - Provider panel (DeepL or Gemini)
+    // MARK: - Provider panel
 
     @ViewBuilder
     private func providerPanel(
@@ -284,24 +241,32 @@ struct PopupView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: icon).foregroundColor(color).font(.caption).fontWeight(.bold)
-                Text(title.uppercased())
-                    .font(.caption2).fontWeight(.bold).tracking(0.8).foregroundColor(color)
+                Text(title.uppercased()).font(.caption2).fontWeight(.bold).tracking(0.8).foregroundColor(color)
                 if case .loading = state { ProgressView().controlSize(.mini) }
                 Spacer()
+
+                // 🔊 Speak (TTS)
+                if case .ok(let text) = state, !viewModel.isEditing {
+                    Button { viewModel.onSpeak(text) } label: {
+                        Image(systemName: "speaker.wave.2.fill")
+                    }
+                    .buttonStyle(.borderless).controlSize(.small)
+                    .help("読み上げ")
+                }
+
                 if case .failed = state {
                     Button(action: viewModel.onRetry) {
-                        Label("Retry", systemImage: "arrow.clockwise")
-                            .labelStyle(.titleAndIcon)
+                        Label("Retry", systemImage: "arrow.clockwise").labelStyle(.titleAndIcon)
                     }
                     .buttonStyle(.borderless).controlSize(.small)
                 }
+
                 if editable, case .ok = state, !viewModel.isEditing, !viewModel.isRefining {
                     Button {
                         viewModel.editDraft = viewModel.geminiText
                         viewModel.isEditing = true
                     } label: {
-                        Label("Edit", systemImage: "square.and.pencil")
-                            .labelStyle(.titleAndIcon)
+                        Label("Edit", systemImage: "square.and.pencil").labelStyle(.titleAndIcon)
                     }
                     .buttonStyle(.borderless).controlSize(.small)
                     .help("Edit; Verso will learn from corrections")
@@ -310,25 +275,21 @@ struct PopupView: View {
 
             Group {
                 switch state {
-                case .notConfigured:
-                    EmptyView()
+                case .notConfigured: EmptyView()
                 case .loading:
                     HStack {
                         ProgressView().controlSize(.small)
                         Text("translating…").font(.caption).foregroundColor(.secondary)
                         Spacer()
                     }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(12).frame(maxWidth: .infinity, alignment: .topLeading)
                 case .ok(let text):
                     if editable && viewModel.isEditing { editor }
                     else {
                         ScrollView {
-                            Text(text)
-                                .font(isCompact ? .callout : .body)
+                            Text(text).font(isCompact ? .callout : .body)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(12)
-                                .textSelection(.enabled)
+                                .padding(12).textSelection(.enabled)
                         }
                     }
                 case .failed(let msg):
@@ -342,34 +303,22 @@ struct PopupView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: isCompact ? 110 : .infinity)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(color.opacity(0.4), lineWidth: 1.5)
-            )
+            .background(Color(NSColor.controlBackgroundColor)).cornerRadius(10)
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(color.opacity(0.4), lineWidth: 1.5))
         }
     }
 
     private var editor: some View {
         VStack(spacing: 6) {
-            TextEditor(text: $viewModel.editDraft)
-                .font(.body)
-                .padding(8)
-                .background(Color(NSColor.textBackgroundColor))
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1)
-                )
+            TextEditor(text: $viewModel.editDraft).font(.body).padding(8)
+                .background(Color(NSColor.textBackgroundColor)).cornerRadius(6)
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1))
             HStack {
-                Text("修正内容から用語を学習します。")
-                    .font(.caption2).foregroundColor(.secondary)
+                Text("修正内容から用語を学習します。").font(.caption2).foregroundColor(.secondary)
                 Spacer()
                 Button("Cancel") { viewModel.isEditing = false }.controlSize(.small)
                 Button("Save & Learn") { viewModel.onSaveEdit(viewModel.editDraft) }
-                    .buttonStyle(.borderedProminent).controlSize(.small)
-                    .keyboardShortcut("s", modifiers: .command)
+                    .buttonStyle(.borderedProminent).controlSize(.small).keyboardShortcut("s", modifiers: .command)
             }
         }
         .padding(8)
@@ -379,17 +328,21 @@ struct PopupView: View {
         HStack(spacing: 6) {
             if viewModel.isRefining { ProgressView().controlSize(.small) }
             Button { viewModel.onRefine("Make the translation shorter and more concise while preserving meaning.") }
-                label: { Label("短く", systemImage: "arrow.down.right.and.arrow.up.left") }
-                .help("⌘1 — shorter")
+                label: { Label("短く", systemImage: "arrow.down.right.and.arrow.up.left") }.help("⌘1 — shorter")
             Button { viewModel.onRefine("Make the translation more casual and conversational.") }
                 label: { Label("砕け", systemImage: "bubble.left") }.help("⌘2 — casual")
             Button { viewModel.onRefine("Make the translation more formal and polite.") }
                 label: { Label("丁寧", systemImage: "person.crop.circle.badge.checkmark") }.help("⌘3 — formal")
             Button { viewModel.onRefine("Provide an alternative translation with different word choices.") }
                 label: { Label("別案", systemImage: "arrow.triangle.2.circlepath") }.help("⌘4 — alternative")
+            Button { viewModel.onTryWithPro() }
+                label: { Label("Pro", systemImage: "star.fill") }.help("Try with Gemini 2.5 Pro")
+            if viewModel.toLang == "JA" {
+                Button { viewModel.onFurigana() }
+                    label: { Label("ふりがな", systemImage: "character.book.closed.fill") }.help("漢字に読み仮名を付ける")
+            }
             if viewModel.canUndo {
-                Button { viewModel.onUndo() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
-                    .help("⌘Z — revert refine")
+                Button { viewModel.onUndo() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }.help("⌘Z")
             }
             Spacer()
             Button {
@@ -457,8 +410,7 @@ struct PopupView: View {
                 Label("閉じる", systemImage: "xmark").labelStyle(.titleAndIcon)
                     .frame(maxWidth: .infinity).padding(.vertical, 6)
             }
-            .buttonStyle(.bordered).controlSize(.large)
-            .keyboardShortcut(.cancelAction)
+            .buttonStyle(.bordered).controlSize(.large).keyboardShortcut(.cancelAction)
         }
     }
 

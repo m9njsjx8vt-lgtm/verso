@@ -255,7 +255,7 @@ struct SettingsView: View {
             Text("Verso").font(.title).bold()
             Text("Personal AI translation, on every page")
                 .font(.callout).foregroundColor(.secondary)
-            Text("v0.6.0").foregroundColor(.secondary).padding(.top, 4)
+            Text("v0.7.0").foregroundColor(.secondary).padding(.top, 4)
             VStack(spacing: 4) {
                 Text("⌘C×2  →  選択翻訳")
                 Text("⌥⇧C   →  領域OCR翻訳")

@@ -7,22 +7,43 @@ enum GeminiError: LocalizedError {
     case safetyFiltered(String)
     case invalidResponse
     case timedOut
+    case offline
 
     var errorDescription: String? {
         switch self {
         case .missingApiKey:
-            return "Gemini APIキーが未設定です。Settings から登録してください。"
-        case .httpError(let code, let body):
-            let snippet = String(body.prefix(300))
-            return "HTTP \(code)\n\(snippet)"
-        case .rateLimited:
-            return "レート制限に到達しました。しばらく待ってください（または Settings で別モデルへ切替）。"
-        case .safetyFiltered(let reason):
-            return "Gemini が翻訳を拒否しました: \(reason)"
-        case .invalidResponse:
-            return "APIレスポンス解析失敗"
+            return "Gemini APIキー未設定。メニューバー🔤 → Settings → General で登録してください。"
+        case .offline:
+            return "オフラインです。ネットワーク接続を確認してから Retry を押してください。"
         case .timedOut:
-            return "タイムアウト。ネットワーク or APIが応答しません。"
+            return "Gemini応答が遅すぎます (タイムアウト)。ネットワークが不安定か、Geminiが過負荷の可能性。Retry で再試行可能。"
+        case .rateLimited:
+            return "Gemini無料枠の上限に達しました。明日リセット、または Settings → Model で別のモデルに切替えてください。"
+        case .safetyFiltered(let reason):
+            return "Geminiが翻訳を拒否しました（\(reason)）。内容を見直すか、Settings で別モデル（2.5 Pro等）を試してください。"
+        case .invalidResponse:
+            return "Geminiから予期しない応答形式。メニューバー🔤 → Console.app でログを確認してください。"
+        case .httpError(let code, let body):
+            let humanized = Self.humanizeHttp(code: code, body: body)
+            return "Gemini HTTP \(code): \(humanized)"
+        }
+    }
+
+    private static func humanizeHttp(code: Int, body: String) -> String {
+        switch code {
+        case 400:
+            if body.lowercased().contains("api key") || body.lowercased().contains("api_key") {
+                return "APIキーが無効。Settings で再設定してください。"
+            }
+            return "リクエスト形式エラー。スクリーンショットをくれれば調査します。"
+        case 401, 403:
+            return "認証失敗。APIキーが無効か期限切れの可能性。Settings で再設定してください。"
+        case 404:
+            return "モデルが見つかりません。Settings → Model でモデル名を確認してください。"
+        case 500...599:
+            return "Gemini側のサーバーエラー。少し待って Retry してください。"
+        default:
+            return String(body.prefix(200))
         }
     }
 }

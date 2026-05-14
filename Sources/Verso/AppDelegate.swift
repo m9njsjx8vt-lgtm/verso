@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let history = HistoryStore()
     let usage = UsageTracker()
     let cache = TranslationCache()
+    let network = NetworkMonitor()
 
     private var statusItem: NSStatusItem?
     private var hotkeyMonitor: HotkeyMonitor?
@@ -23,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let popup = PopupController(
             settings: settings, glossary: glossary, history: history,
-            usage: usage, cache: cache
+            usage: usage, cache: cache, network: network
         )
         popupController = popup
         ocrCoordinator = OCRCoordinator(popupController: popup)
@@ -32,11 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupCmdCHotkey()
         setupAuxHotkeys()
 
-        // Register as Services provider — adds 'Versoで翻訳' to right-click → Services
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
 
-        // First-launch flow
         if settings.apiKey.isEmpty {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.showOnboarding()
@@ -47,7 +46,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // React to pause toggle: update menu bar icon
         Task { @MainActor [weak self] in
             for await _ in NotificationCenter.default.notifications(named: UserDefaults.didChangeNotification) {
                 self?.refreshStatusBarIcon()
@@ -64,44 +62,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(.init(title: "Translate Clipboard  ⌘⇧V",
-                           action: #selector(translateClipboard),
-                           keyEquivalent: ""))
+                           action: #selector(translateClipboard), keyEquivalent: ""))
         menu.addItem(.init(title: "Translate Region…  ⌥⇧C",
-                           action: #selector(translateRegion),
-                           keyEquivalent: ""))
+                           action: #selector(translateRegion), keyEquivalent: ""))
+        menu.addItem(.init(title: "Translate Frontmost Window…",
+                           action: #selector(translateWindow), keyEquivalent: ""))
         menu.addItem(.init(title: "History…  ⌘⇧H",
-                           action: #selector(showHistory),
-                           keyEquivalent: ""))
+                           action: #selector(showHistory), keyEquivalent: ""))
         menu.addItem(.separator())
-        let pauseItem = NSMenuItem(
-            title: settings.paused ? "Resume Verso" : "Pause Verso",
-            action: #selector(togglePause),
-            keyEquivalent: ""
-        )
+        let pauseItem = NSMenuItem(title: settings.paused ? "Resume Verso" : "Pause Verso",
+                                   action: #selector(togglePause), keyEquivalent: "")
         pauseItem.tag = 999
         menu.addItem(pauseItem)
         menu.addItem(.init(title: "Settings…",
-                           action: #selector(openSettings),
-                           keyEquivalent: ","))
+                           action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(.init(title: "Show Welcome Tour…",
-                           action: #selector(showOnboarding),
-                           keyEquivalent: ""))
+                           action: #selector(showOnboarding), keyEquivalent: ""))
         menu.addItem(.init(title: "Check Accessibility Permission",
-                           action: #selector(recheckAccessibility),
-                           keyEquivalent: ""))
+                           action: #selector(recheckAccessibility), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(.init(title: "Quit Verso",
-                           action: #selector(NSApplication.terminate(_:)),
-                           keyEquivalent: "q"))
+                           action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
     }
 
     private func refreshStatusBarIcon() {
         guard let button = statusItem?.button else { return }
-        let symbolName = settings.paused ? "character.bubble.slash" : "character.bubble"
+        let symbolName: String
+        if settings.paused { symbolName = "character.bubble.slash" }
+        else if !network.isOnline { symbolName = "character.bubble" /* could indicate offline differently */ }
+        else { symbolName = "character.bubble" }
         button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Verso")
-
-        // Update Pause/Resume menu item label
         if let pauseItem = statusItem?.menu?.item(withTag: 999) {
             pauseItem.title = settings.paused ? "Resume Verso" : "Pause Verso"
         }
@@ -121,15 +112,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         auxHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self, !self.settings.paused else { return }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            // ⌥⇧C → OCR
             if event.keyCode == 8, flags == [.option, .shift] {
                 Task { @MainActor in self.ocrCoordinator?.startRegionTranslation() }
             }
-            // ⌘⇧H → History window
             if event.keyCode == 4, flags == [.command, .shift] {
                 Task { @MainActor in self.showHistory() }
             }
-            // ⌘⇧V → Translate clipboard
             if event.keyCode == 9, flags == [.command, .shift] {
                 Task { @MainActor in self.translateClipboard() }
             }
@@ -146,10 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func translateClipboard() {
         guard !settings.paused,
               let text = NSPasteboard.general.string(forType: .string),
-              !text.isEmpty else {
-            NSSound.beep()
-            return
-        }
+              !text.isEmpty else { NSSound.beep(); return }
         popupController?.show(originalText: text)
     }
 
@@ -158,9 +143,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ocrCoordinator?.startRegionTranslation()
     }
 
-    @objc private func showHistory() {
-        historyWindowController?.show()
+    @objc private func translateWindow() {
+        guard !settings.paused else { return }
+        ocrCoordinator?.startWindowTranslation()
     }
+
+    @objc private func showHistory() { historyWindowController?.show() }
 
     @objc private func showOnboarding() {
         if onboardingWindowController == nil {
@@ -208,28 +196,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - URL scheme handler  (verso://translate?text=...)
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls {
-            handle(url: url)
-        }
+        for url in urls { handle(url: url) }
     }
 
     private func handle(url: URL) {
         guard url.scheme == "verso" else { return }
         guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
-
         switch url.host {
         case "translate":
-            if let text = comps.queryItems?.first(where: { $0.name == "text" })?.value,
-               !text.isEmpty {
+            if let text = comps.queryItems?.first(where: { $0.name == "text" })?.value, !text.isEmpty {
                 let target = comps.queryItems?.first(where: { $0.name == "target" })?.value
                 popupController?.show(originalText: text, forceTarget: target)
             }
-        case "history":
-            showHistory()
-        case "settings":
-            openSettings()
-        default:
-            break
+        case "history": showHistory()
+        case "settings": openSettings()
+        default: break
         }
     }
 
