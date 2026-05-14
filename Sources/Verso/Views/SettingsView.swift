@@ -11,22 +11,22 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             generalTab
-                .tabItem { Label("General", systemImage: "gearshape") }
+                .tabItem { Label(L10n.tabGeneral, systemImage: "gearshape") }
 
             languagesTab
-                .tabItem { Label("Languages", systemImage: "globe") }
+                .tabItem { Label(L10n.tabLanguages, systemImage: "globe") }
 
             contextTab
-                .tabItem { Label("Personalization", systemImage: "person.text.rectangle") }
+                .tabItem { Label(L10n.tabPersonalization, systemImage: "person.text.rectangle") }
 
             GlossaryTabView(glossary: glossary)
-                .tabItem { Label("Glossary", systemImage: "book") }
+                .tabItem { Label(L10n.tabGlossary, systemImage: "book") }
 
             usageTab
-                .tabItem { Label("Usage", systemImage: "chart.bar") }
+                .tabItem { Label(L10n.tabUsage, systemImage: "chart.bar") }
 
             aboutTab
-                .tabItem { Label("About", systemImage: "info.circle") }
+                .tabItem { Label(L10n.tabAbout, systemImage: "info.circle") }
         }
         .frame(width: 660, height: 560)
         .padding(20)
@@ -99,8 +99,29 @@ struct SettingsView: View {
 
                 Divider()
 
+                Divider()
+
                 Group {
-                    Text("Permissions").font(.headline)
+                    Text(L10n.sectionLanguage).font(.headline)
+                    Picker("", selection: $settings.appLanguage) {
+                        ForEach(L10n.Language.allCases, id: \.rawValue) { lang in
+                            Text(lang.displayName).tag(lang.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    Text(L10n.t(
+                        "Affects menu bar items, settings tabs, and major button labels. Refine button names (短く / 砕け…) stay in Japanese as conventional shortcuts.",
+                        "メニューバー、設定タブ、主要ボタンに反映されます。Refineボタン (短く / 砕け…) は慣習として日本語のままです。"
+                    ))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                }
+
+                Divider()
+
+                Group {
+                    Text(L10n.sectionPermissions).font(.headline)
                     HStack {
                         Image(systemName: AccessibilityService.isTrusted()
                             ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
@@ -255,7 +276,7 @@ struct SettingsView: View {
             Text("Verso").font(.title).bold()
             Text("Personal AI translation, on every page")
                 .font(.callout).foregroundColor(.secondary)
-            Text("v0.8.0").foregroundColor(.secondary).padding(.top, 4)
+            Text("v0.9.0").foregroundColor(.secondary).padding(.top, 4)
             VStack(spacing: 4) {
                 Text("⌘C×2  →  選択翻訳")
                 Text("⌥⇧C   →  領域OCR翻訳")

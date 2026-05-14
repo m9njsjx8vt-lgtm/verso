@@ -60,6 +60,15 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(cacheEnabled, forKey: "cacheEnabled") }
     }
 
+    /// UI language: "system" / "ja" / "en"
+    @Published var appLanguage: String {
+        didSet {
+            UserDefaults.standard.set(appLanguage, forKey: "appLanguage")
+            L10n.setLanguage(appLanguage)
+            NotificationCenter.default.post(name: .versoLanguageChanged, object: nil)
+        }
+    }
+
     init() {
         let d = UserDefaults.standard
         self.apiKey = SecretsStore.get("geminiApiKey") ?? ""
@@ -73,6 +82,8 @@ final class AppSettings: ObservableObject {
         self.privacyMode = d.bool(forKey: "privacyMode")
         self.stayOpen = d.bool(forKey: "stayOpen")
         self.cacheEnabled = d.object(forKey: "cacheEnabled") as? Bool ?? true
+        self.appLanguage = d.string(forKey: "appLanguage") ?? "system"
+        L10n.setLanguage(self.appLanguage)
     }
 
     static let defaultContext: String = """

@@ -104,4 +104,5 @@ final class Glossary: ObservableObject {
 
 extension Notification.Name {
     static let versoGlossarySaveFailed = Notification.Name("versoGlossarySaveFailed")
+    static let versoLanguageChanged = Notification.Name("versoLanguageChanged")
 }

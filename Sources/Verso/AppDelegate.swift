@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var ocrCoordinator: OCRCoordinator?
     private var historyWindowController: HistoryWindowController?
     private var onboardingWindowController: OnboardingWindowController?
+    private var workspaceWindowController: WorkspaceWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -38,12 +39,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popupController = popup
         ocrCoordinator = OCRCoordinator(popupController: popup)
         historyWindowController = HistoryWindowController(history: history, popupController: popup)
+        workspaceWindowController = WorkspaceWindowController(popupController: popup)
 
         setupCmdCHotkey()
         setupAuxHotkeys()
 
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
+
+        // Rebuild menu when UI language toggles
+        NotificationCenter.default.addObserver(
+            forName: .versoLanguageChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.rebuildStatusBarMenu() }
+        }
 
         if settings.apiKey.isEmpty {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -68,51 +77,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem = item
         refreshStatusBarIcon()
+        rebuildStatusBarMenu()
+    }
 
+    private func rebuildStatusBarMenu() {
+        guard let item = statusItem else { return }
         let menu = NSMenu()
-        menu.addItem(.init(title: "Translate Clipboard  ⌘⇧V",
+        menu.addItem(.init(title: "\(L10n.menuTranslateClipboard)  ⌘⇧V",
                            action: #selector(translateClipboard), keyEquivalent: ""))
-        menu.addItem(.init(title: "Translate Region…  ⌥⇧C",
+        menu.addItem(.init(title: "\(L10n.menuTranslateRegion)  ⌥⇧C",
                            action: #selector(translateRegion), keyEquivalent: ""))
-        menu.addItem(.init(title: "Translate Frontmost Window…",
+        menu.addItem(.init(title: L10n.menuTranslateWindow,
                            action: #selector(translateWindow), keyEquivalent: ""))
-        menu.addItem(.init(title: "History…  ⌘⇧H",
+        menu.addItem(.init(title: "\(L10n.menuOpenWorkspace)  ⌘⇧T",
+                           action: #selector(openWorkspace), keyEquivalent: ""))
+        menu.addItem(.init(title: "\(L10n.menuHistory)  ⌘⇧H",
                            action: #selector(showHistory), keyEquivalent: ""))
         menu.addItem(.separator())
-        let pauseItem = NSMenuItem(title: settings.paused ? "Resume Verso" : "Pause Verso",
+        let pauseItem = NSMenuItem(title: settings.paused ? L10n.menuResume : L10n.menuPause,
                                    action: #selector(togglePause), keyEquivalent: "")
         pauseItem.tag = 999
         menu.addItem(pauseItem)
-        // Show 'Check for Updates' only if a real SUFeedURL is configured
         if let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
            !feed.contains("REPLACE_ME") {
-            let updateItem = NSMenuItem(title: "Check for Updates…",
+            let updateItem = NSMenuItem(title: L10n.menuCheckForUpdates,
                                         action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
                                         keyEquivalent: "")
             updateItem.target = updaterController
             menu.addItem(updateItem)
         }
-        menu.addItem(.init(title: "Settings…",
+        menu.addItem(.init(title: L10n.menuSettings,
                            action: #selector(openSettings), keyEquivalent: ","))
-        menu.addItem(.init(title: "Show Welcome Tour…",
+        menu.addItem(.init(title: L10n.menuShowWelcome,
                            action: #selector(showOnboarding), keyEquivalent: ""))
-        menu.addItem(.init(title: "Check Accessibility Permission",
+        menu.addItem(.init(title: L10n.menuCheckAccessibility,
                            action: #selector(recheckAccessibility), keyEquivalent: ""))
         menu.addItem(.separator())
-        menu.addItem(.init(title: "Quit Verso",
+        menu.addItem(.init(title: L10n.menuQuit,
                            action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
     }
 
     private func refreshStatusBarIcon() {
         guard let button = statusItem?.button else { return }
-        let symbolName: String
-        if settings.paused { symbolName = "character.bubble.slash" }
-        else if !network.isOnline { symbolName = "character.bubble" /* could indicate offline differently */ }
-        else { symbolName = "character.bubble" }
+        let symbolName = settings.paused ? "character.bubble.slash" : "character.bubble"
         button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Verso")
         if let pauseItem = statusItem?.menu?.item(withTag: 999) {
-            pauseItem.title = settings.paused ? "Resume Verso" : "Pause Verso"
+            pauseItem.title = settings.paused ? L10n.menuResume : L10n.menuPause
         }
     }
 
@@ -130,14 +141,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         auxHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self, !self.settings.paused else { return }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            // ⌥⇧C → OCR
             if event.keyCode == 8, flags == [.option, .shift] {
                 Task { @MainActor in self.ocrCoordinator?.startRegionTranslation() }
             }
+            // ⌘⇧H → History
             if event.keyCode == 4, flags == [.command, .shift] {
                 Task { @MainActor in self.showHistory() }
             }
+            // ⌘⇧V → Translate clipboard
             if event.keyCode == 9, flags == [.command, .shift] {
                 Task { @MainActor in self.translateClipboard() }
+            }
+            // ⌘⇧T → Open workspace
+            if event.keyCode == 17, flags == [.command, .shift] {
+                Task { @MainActor in self.openWorkspace() }
             }
         }
     }
@@ -168,6 +186,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showHistory() { historyWindowController?.show() }
 
+    @objc private func openWorkspace() { workspaceWindowController?.show() }
+
     @objc private func showOnboarding() {
         if onboardingWindowController == nil {
             onboardingWindowController = OnboardingWindowController(
@@ -195,8 +215,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func recheckAccessibility() {
         if AccessibilityService.isTrusted() {
             let alert = NSAlert()
-            alert.messageText = "Accessibility OK"
-            alert.informativeText = "⌘C×2、⌥⇧C、⌘⇧H、⌘⇧V が動作します。"
+            alert.messageText = L10n.t("Accessibility OK", "アクセシビリティ OK")
+            alert.informativeText = L10n.t(
+                "⌘C×2, ⌥⇧C, ⌘⇧H, ⌘⇧V, ⌘⇧T are all working.",
+                "⌘C×2、⌥⇧C、⌘⇧H、⌘⇧V、⌘⇧T が動作します。"
+            )
             alert.runModal()
         } else {
             _ = AccessibilityService.checkAndPromptIfNeeded()
@@ -228,6 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "history": showHistory()
         case "settings": openSettings()
+        case "workspace": openWorkspace()
         default: break
         }
     }

@@ -35,8 +35,8 @@ targets:
       properties:
         LSUIElement: true
         LSMinimumSystemVersion: "13.0"
-        CFBundleShortVersionString: "0.8.0"
-        CFBundleVersion: "12"
+        CFBundleShortVersionString: "0.9.0"
+        CFBundleVersion: "13"
         CFBundleDisplayName: Verso
         CFBundleIconFile: AppIcon
         NSHighResolutionCapable: true
