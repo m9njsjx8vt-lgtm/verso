@@ -46,8 +46,8 @@ targets:
         NSHumanReadableCopyright: "© 2026 Tomoro Iwasaki"
         # Sparkle auto-update — REPLACE these with real values via docs/sparkle-handoff.md
         # before first signed release. Until then, 'Check for Updates' menu item is hidden.
-        SUFeedURL: "https://example.com/REPLACE_ME/appcast.xml"
-        SUPublicEDKey: "REPLACE_ME_BASE64_EDDSA_PUBLIC_KEY"
+        SUFeedURL: "https://m9njsjx8vt-lgtm.github.io/verso/appcast.xml"
+        SUPublicEDKey: "aVgntSFEasAg4ONSz47gO8R3Ir3IUDoJSnO6etS6Q74="
         SUEnableInstallerLauncherService: false
         SUEnableAutomaticChecks: true
         SUScheduledCheckInterval: 86400

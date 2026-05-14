@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Verso</title>
+    <link>https://github.com/m9njsjx8vt-lgtm/verso</link>
+    <description>Personal AI translation, on every page</description>
+    <language>ja</language>
+    <!--
+      Each release adds an <item> below. The 'sparkle:edSignature' value comes
+      from running `sign_update <DMG-path>` after build_dmg.sh, which prints
+      the signature line to copy in. See docs/sparkle-handoff.md.
+    -->
+  </channel>
+</rss>
