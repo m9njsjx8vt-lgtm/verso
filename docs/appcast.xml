@@ -11,6 +11,24 @@
       the signature line to copy in. See docs/sparkle-handoff.md.
     -->
     <item>
+      <title>v0.9.0</title>
+      <pubDate>Thu, 14 May 2026 22:35:34 +0900</pubDate>
+      <sparkle:version>13</sparkle:version>
+      <sparkle:shortVersionString>0.9.0</sparkle:shortVersionString>
+      <description><![CDATA[
+        <ul>
+          <li>UI日本語/英語切替 (Settings → General → UI Language)</li>
+          <li>翻訳ワークスペース新ウィンドウ — メニューバー → "翻訳ウィンドウを開く" / ⌘⇧T で常時開ける入力欄付きウィンドウ</li>
+          <li>ターゲット言語 override (ワークスペース内ピッカーで都度変更可)</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/m9njsjx8vt-lgtm/verso/releases/download/v0.9.0/Verso-v0.9.0.dmg"
+        sparkle:edSignature="sS8/8X4KOAK6rlZU/jmWOdXE4A+Zj2tFF9Es5peuH64vu9cWhk0QLnBBLVEfToDZon21gtVZu6FPBMlGISCCCA=="
+        length="2583692"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>v0.8.0</title>
       <pubDate>Thu, 14 May 2026 22:23:46 +0900</pubDate>
       <sparkle:version>12</sparkle:version>
