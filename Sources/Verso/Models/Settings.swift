@@ -3,6 +3,8 @@ import Combine
 
 @MainActor
 final class AppSettings: ObservableObject {
+    // MARK: - API keys
+
     @Published var apiKey: String {
         didSet { SecretsStore.set(apiKey, forKey: "geminiApiKey") }
     }
@@ -10,6 +12,8 @@ final class AppSettings: ObservableObject {
     @Published var deeplApiKey: String {
         didSet { SecretsStore.set(deeplApiKey, forKey: "deeplApiKey") }
     }
+
+    // MARK: - Translator behavior
 
     @Published var translatorContext: String {
         didSet { UserDefaults.standard.set(translatorContext, forKey: "translatorContext") }
@@ -19,13 +23,56 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(model, forKey: "model") }
     }
 
+    /// What target to use when source is detected as English.
+    @Published var targetWhenEnglish: String {
+        didSet { UserDefaults.standard.set(targetWhenEnglish, forKey: "targetWhenEnglish") }
+    }
+
+    /// What target to use when source is anything other than English.
+    @Published var targetWhenOther: String {
+        didSet { UserDefaults.standard.set(targetWhenOther, forKey: "targetWhenOther") }
+    }
+
+    /// Preserve Markdown / code / URLs / paths verbatim during translation.
+    @Published var preserveMarkdownAndCode: Bool {
+        didSet { UserDefaults.standard.set(preserveMarkdownAndCode, forKey: "preserveMarkdownAndCode") }
+    }
+
+    // MARK: - Operational toggles
+
+    /// Hotkey detection paused entirely. ⌘C×2 and ⌥⇧C ignored.
+    @Published var paused: Bool {
+        didSet { UserDefaults.standard.set(paused, forKey: "paused") }
+    }
+
+    /// Don't record translations to history.
+    @Published var privacyMode: Bool {
+        didSet { UserDefaults.standard.set(privacyMode, forKey: "privacyMode") }
+    }
+
+    /// Pin popup open (don't auto-dismiss on focus loss). Lighter conversation mode.
+    @Published var stayOpen: Bool {
+        didSet { UserDefaults.standard.set(stayOpen, forKey: "stayOpen") }
+    }
+
+    /// Use the in-memory cache to skip API calls for repeated text.
+    @Published var cacheEnabled: Bool {
+        didSet { UserDefaults.standard.set(cacheEnabled, forKey: "cacheEnabled") }
+    }
+
     init() {
+        let d = UserDefaults.standard
         self.apiKey = SecretsStore.get("geminiApiKey") ?? ""
         self.deeplApiKey = SecretsStore.get("deeplApiKey") ?? ""
-        self.translatorContext = UserDefaults.standard.string(forKey: "translatorContext")
-            ?? Self.defaultContext
-        self.model = UserDefaults.standard.string(forKey: "model")
-            ?? "gemini-2.5-flash-lite"
+        self.translatorContext = d.string(forKey: "translatorContext") ?? Self.defaultContext
+        self.model = d.string(forKey: "model") ?? "gemini-2.5-flash-lite"
+        self.targetWhenEnglish = d.string(forKey: "targetWhenEnglish") ?? "JA"
+        self.targetWhenOther = d.string(forKey: "targetWhenOther") ?? "EN"
+        self.preserveMarkdownAndCode = d.object(forKey: "preserveMarkdownAndCode") as? Bool ?? true
+        self.paused = d.bool(forKey: "paused")
+        self.privacyMode = d.bool(forKey: "privacyMode")
+        self.stayOpen = d.bool(forKey: "stayOpen")
+        self.cacheEnabled = d.object(forKey: "cacheEnabled") as? Bool ?? true
     }
 
     static let defaultContext: String = """

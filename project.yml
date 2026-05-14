@@ -28,8 +28,8 @@ targets:
       properties:
         LSUIElement: true
         LSMinimumSystemVersion: "13.0"
-        CFBundleShortVersionString: "0.5.0"
-        CFBundleVersion: "9"
+        CFBundleShortVersionString: "0.6.0"
+        CFBundleVersion: "10"
         CFBundleDisplayName: Verso
         CFBundleIconFile: AppIcon
         NSHighResolutionCapable: true
@@ -37,6 +37,21 @@ targets:
         NSScreenCaptureUsageDescription: "Verso captures the area you select to OCR and translate the text in it."
         NSAccessibilityUsageDescription: "Verso watches for ⌘C×2 and ⌥⇧C globally so you can translate from any app. It does NOT log keystrokes."
         NSHumanReadableCopyright: "© 2026 Tomoro Iwasaki"
+        # URL scheme — `open verso://translate?text=hello` from anywhere
+        CFBundleURLTypes:
+          - CFBundleURLName: "Verso translate URL"
+            CFBundleURLSchemes:
+              - verso
+        # Services menu — right-click → Services → 'Versoで翻訳' on any selected text
+        NSServices:
+          - NSMenuItem:
+              default: "Versoで翻訳"
+            NSMessage: translateText
+            NSPortName: Verso
+            NSSendTypes:
+              - public.utf8-plain-text
+              - NSStringPboardType
+            NSReturnTypes: []
     entitlements:
       path: Sources/Verso/Verso.entitlements
       properties:

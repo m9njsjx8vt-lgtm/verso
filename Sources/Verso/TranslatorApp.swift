@@ -10,6 +10,7 @@ struct TranslatorApp: App {
                 .environmentObject(appDelegate.settings)
                 .environmentObject(appDelegate.glossary)
                 .environmentObject(appDelegate.history)
+                .environmentObject(appDelegate.usage)
         }
     }
 }

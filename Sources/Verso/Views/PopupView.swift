@@ -13,13 +13,12 @@ final class PopupViewModel: ObservableObject {
     @Published var deepLState: ProviderState
     @Published var geminiState: ProviderState = .loading
     @Published var isRefining: Bool = false
-    /// Refines push the previous translation here so user can ⌘Z back.
     @Published var undoStack: [String] = []
-    /// In-place editing of the Gemini translation
     @Published var isEditing: Bool = false
     @Published var editDraft: String = ""
-    /// Brief toast message (auto-clears)
     @Published var toast: String?
+    @Published var stayOpen: Bool
+    @Published var privacyMode: Bool
 
     let fromLang: String
     let toLang: String
@@ -32,12 +31,16 @@ final class PopupViewModel: ObservableObject {
     let onUndo: () -> Void
     let onRetry: () -> Void
     let onSaveEdit: (String) -> Void
+    let onChangeTarget: (String) -> Void
+    let onTogglePin: () -> Void
 
     init(
         originalText: String,
         fromLang: String,
         toLang: String,
         deepLConfigured: Bool,
+        stayOpen: Bool,
+        privacyMode: Bool,
         onInsert: @escaping (String) -> Void,
         onCopy: @escaping (String) -> Void,
         onClose: @escaping () -> Void,
@@ -45,12 +48,16 @@ final class PopupViewModel: ObservableObject {
         onAddGlossary: @escaping (String, String, Bool) -> Void,
         onUndo: @escaping () -> Void,
         onRetry: @escaping () -> Void,
-        onSaveEdit: @escaping (String) -> Void
+        onSaveEdit: @escaping (String) -> Void,
+        onChangeTarget: @escaping (String) -> Void,
+        onTogglePin: @escaping () -> Void
     ) {
         self.originalText = originalText
         self.fromLang = fromLang
         self.toLang = toLang
         self.deepLState = deepLConfigured ? .loading : .notConfigured
+        self.stayOpen = stayOpen
+        self.privacyMode = privacyMode
         self.onInsert = onInsert
         self.onCopy = onCopy
         self.onClose = onClose
@@ -59,6 +66,8 @@ final class PopupViewModel: ObservableObject {
         self.onUndo = onUndo
         self.onRetry = onRetry
         self.onSaveEdit = onSaveEdit
+        self.onChangeTarget = onChangeTarget
+        self.onTogglePin = onTogglePin
     }
 
     var primaryInsertText: String {
@@ -95,9 +104,7 @@ final class PopupViewModel: ObservableObject {
         toast = message
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
-            if self?.toast == message {
-                self?.toast = nil
-            }
+            if self?.toast == message { self?.toast = nil }
         }
     }
 }
@@ -140,7 +147,6 @@ struct PopupView: View {
             }
             .padding(16)
 
-            // Toast overlay
             if let toast = viewModel.toast {
                 Text(toast)
                     .font(.callout)
@@ -165,7 +171,6 @@ struct PopupView: View {
         .background(keyboardShortcuts)
     }
 
-    // Hidden buttons to register keyboard shortcuts
     private var keyboardShortcuts: some View {
         ZStack {
             if viewModel.canUndo {
@@ -186,17 +191,64 @@ struct PopupView: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Header (with target language picker + pin)
 
     private var header: some View {
-        HStack {
-            Text("\(viewModel.fromLang)  →  \(viewModel.toLang)")
+        HStack(spacing: 8) {
+            Text(viewModel.fromLang)
                 .font(.caption)
                 .fontWeight(.semibold)
                 .tracking(1.0)
                 .foregroundColor(.secondary)
+
+            Image(systemName: "arrow.right")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            Menu {
+                ForEach(LanguageDetector.availableTargets, id: \.short) { lang in
+                    Button {
+                        viewModel.onChangeTarget(lang.short)
+                    } label: {
+                        if lang.short == viewModel.toLang {
+                            Label("\(lang.short)  \(lang.fullName)", systemImage: "checkmark")
+                        } else {
+                            Text("\(lang.short)  \(lang.fullName)")
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 2) {
+                    Text(viewModel.toLang)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .tracking(1.0)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                }
+                .foregroundColor(.accentColor)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+
             Spacer()
-            Text("⤡ ドラッグで拡縮  •  Esc で閉じる")
+
+            if viewModel.privacyMode {
+                Image(systemName: "lock.fill")
+                    .foregroundColor(.orange)
+                    .font(.caption2)
+                    .help("Privacy mode: not saved to history")
+            }
+
+            Button { viewModel.onTogglePin() } label: {
+                Image(systemName: viewModel.stayOpen ? "pin.fill" : "pin")
+                    .foregroundColor(viewModel.stayOpen ? .accentColor : .secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(viewModel.stayOpen ? "Pinned (won't auto-dismiss)" : "Pin to keep open")
+
+            Text(viewModel.stayOpen ? "📌 Pinned  •  Esc で閉じる" : "⤡ ドラッグで拡縮  •  Esc で閉じる")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
@@ -222,43 +274,27 @@ struct PopupView: View {
         )
     }
 
-    // MARK: - Provider panel
+    // MARK: - Provider panel (DeepL or Gemini)
 
     @ViewBuilder
     private func providerPanel(
-        title: String,
-        icon: String,
-        color: Color,
-        state: PopupViewModel.ProviderState,
-        isCompact: Bool,
-        editable: Bool
+        title: String, icon: String, color: Color,
+        state: PopupViewModel.ProviderState, isCompact: Bool, editable: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .foregroundColor(color)
-                    .font(.caption)
-                    .fontWeight(.bold)
+                Image(systemName: icon).foregroundColor(color).font(.caption).fontWeight(.bold)
                 Text(title.uppercased())
-                    .font(.caption2)
-                    .fontWeight(.bold)
-                    .tracking(0.8)
-                    .foregroundColor(color)
-                if case .loading = state {
-                    ProgressView().controlSize(.mini)
-                }
+                    .font(.caption2).fontWeight(.bold).tracking(0.8).foregroundColor(color)
+                if case .loading = state { ProgressView().controlSize(.mini) }
                 Spacer()
-
                 if case .failed = state {
                     Button(action: viewModel.onRetry) {
                         Label("Retry", systemImage: "arrow.clockwise")
                             .labelStyle(.titleAndIcon)
                     }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
+                    .buttonStyle(.borderless).controlSize(.small)
                 }
-
-                // Edit toggle (only Gemini)
                 if editable, case .ok = state, !viewModel.isEditing, !viewModel.isRefining {
                     Button {
                         viewModel.editDraft = viewModel.geminiText
@@ -267,9 +303,8 @@ struct PopupView: View {
                         Label("Edit", systemImage: "square.and.pencil")
                             .labelStyle(.titleAndIcon)
                     }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
-                    .help("Edit the translation; Verso will learn the corrections.")
+                    .buttonStyle(.borderless).controlSize(.small)
+                    .help("Edit; Verso will learn from corrections")
                 }
             }
 
@@ -277,22 +312,17 @@ struct PopupView: View {
                 switch state {
                 case .notConfigured:
                     EmptyView()
-
                 case .loading:
                     HStack {
                         ProgressView().controlSize(.small)
-                        Text("translating…")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        Text("translating…").font(.caption).foregroundColor(.secondary)
                         Spacer()
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-
                 case .ok(let text):
-                    if editable && viewModel.isEditing {
-                        editor
-                    } else {
+                    if editable && viewModel.isEditing { editor }
+                    else {
                         ScrollView {
                             Text(text)
                                 .font(isCompact ? .callout : .body)
@@ -301,19 +331,13 @@ struct PopupView: View {
                                 .textSelection(.enabled)
                         }
                     }
-
                 case .failed(let msg):
                     ScrollView {
                         HStack(alignment: .top, spacing: 6) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                            Text(msg)
-                                .font(.caption)
-                                .foregroundColor(.primary)
-                                .textSelection(.enabled)
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+                            Text(msg).font(.caption).foregroundColor(.primary).textSelection(.enabled)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                     }
                 }
             }
@@ -326,8 +350,6 @@ struct PopupView: View {
             )
         }
     }
-
-    // MARK: - Inline edit editor
 
     private var editor: some View {
         VStack(spacing: 6) {
@@ -342,74 +364,40 @@ struct PopupView: View {
                 )
             HStack {
                 Text("修正内容から用語を学習します。")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .font(.caption2).foregroundColor(.secondary)
                 Spacer()
-                Button("Cancel") {
-                    viewModel.isEditing = false
-                }
-                .controlSize(.small)
-                Button("Save & Learn") {
-                    viewModel.onSaveEdit(viewModel.editDraft)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .keyboardShortcut("s", modifiers: .command)
+                Button("Cancel") { viewModel.isEditing = false }.controlSize(.small)
+                Button("Save & Learn") { viewModel.onSaveEdit(viewModel.editDraft) }
+                    .buttonStyle(.borderedProminent).controlSize(.small)
+                    .keyboardShortcut("s", modifiers: .command)
             }
         }
         .padding(8)
     }
 
-    // MARK: - Refine bar
-
     private var refineBar: some View {
         HStack(spacing: 6) {
-            if viewModel.isRefining {
-                ProgressView().controlSize(.small)
-            }
-            Button { viewModel.onRefine("Make the translation shorter and more concise while preserving meaning.") } label: {
-                Label("短く", systemImage: "arrow.down.right.and.arrow.up.left")
-            }
-            .help("⌘1 — shorter")
-
-            Button { viewModel.onRefine("Make the translation more casual and conversational.") } label: {
-                Label("砕け", systemImage: "bubble.left")
-            }
-            .help("⌘2 — casual")
-
-            Button { viewModel.onRefine("Make the translation more formal and polite.") } label: {
-                Label("丁寧", systemImage: "person.crop.circle.badge.checkmark")
-            }
-            .help("⌘3 — formal")
-
-            Button { viewModel.onRefine("Provide an alternative translation with different word choices.") } label: {
-                Label("別案", systemImage: "arrow.triangle.2.circlepath")
-            }
-            .help("⌘4 — alternative")
-
+            if viewModel.isRefining { ProgressView().controlSize(.small) }
+            Button { viewModel.onRefine("Make the translation shorter and more concise while preserving meaning.") }
+                label: { Label("短く", systemImage: "arrow.down.right.and.arrow.up.left") }
+                .help("⌘1 — shorter")
+            Button { viewModel.onRefine("Make the translation more casual and conversational.") }
+                label: { Label("砕け", systemImage: "bubble.left") }.help("⌘2 — casual")
+            Button { viewModel.onRefine("Make the translation more formal and polite.") }
+                label: { Label("丁寧", systemImage: "person.crop.circle.badge.checkmark") }.help("⌘3 — formal")
+            Button { viewModel.onRefine("Provide an alternative translation with different word choices.") }
+                label: { Label("別案", systemImage: "arrow.triangle.2.circlepath") }.help("⌘4 — alternative")
             if viewModel.canUndo {
-                Button { viewModel.onUndo() } label: {
-                    Label("Undo", systemImage: "arrow.uturn.backward")
-                }
-                .help("⌘Z — revert refine")
+                Button { viewModel.onUndo() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
+                    .help("⌘Z — revert refine")
             }
-
             Spacer()
-
             Button {
-                newTerm = ""
-                newTrans = ""
-                newPreserve = false
-                showGlossaryPopover = true
-            } label: {
-                Label("用語追加", systemImage: "book.closed.fill")
-            }
-            .popover(isPresented: $showGlossaryPopover, arrowEdge: .top) {
-                addGlossaryPopover
-            }
+                newTerm = ""; newTrans = ""; newPreserve = false; showGlossaryPopover = true
+            } label: { Label("用語追加", systemImage: "book.closed.fill") }
+                .popover(isPresented: $showGlossaryPopover, arrowEdge: .top) { addGlossaryPopover }
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+        .buttonStyle(.bordered).controlSize(.small)
         .disabled(viewModel.isRefining)
     }
 
@@ -417,18 +405,12 @@ struct PopupView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Glossaryに追加").font(.headline)
             Text("ここで登録した用語は今後すべての翻訳プロンプトに注入されます。")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
+                .font(.caption).foregroundColor(.secondary)
             Group {
                 Text("Term").font(.caption).foregroundColor(.secondary)
-                TextField("例: DXPP, EARTHBRAIN", text: $newTerm)
-                    .textFieldStyle(.roundedBorder)
+                TextField("例: DXPP, EARTHBRAIN", text: $newTerm).textFieldStyle(.roundedBorder)
             }
-
-            Toggle("Preserve as-is (固有名詞・訳さない)", isOn: $newPreserve)
-                .controlSize(.small)
-
+            Toggle("Preserve as-is (固有名詞・訳さない)", isOn: $newPreserve).controlSize(.small)
             if !newPreserve {
                 Group {
                     Text("Translation").font(.caption).foregroundColor(.secondary)
@@ -436,10 +418,8 @@ struct PopupView: View {
                         .textFieldStyle(.roundedBorder)
                 }
             }
-
             HStack {
-                Button("キャンセル") { showGlossaryPopover = false }
-                    .keyboardShortcut(.cancelAction)
+                Button("キャンセル") { showGlossaryPopover = false }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("追加") {
                     viewModel.onAddGlossary(newTerm, newTrans, newPreserve)
@@ -450,14 +430,9 @@ struct PopupView: View {
                     || (!newPreserve && newTrans.trimmingCharacters(in: .whitespaces).isEmpty))
             }
         }
-        .padding(16)
-        .frame(width: 380)
-        .onDisappear {
-            newTerm = ""; newTrans = ""; newPreserve = false
-        }
+        .padding(16).frame(width: 380)
+        .onDisappear { newTerm = ""; newTrans = ""; newPreserve = false }
     }
-
-    // MARK: - Action bar
 
     private var actionBar: some View {
         HStack(spacing: 6) {
@@ -465,33 +440,24 @@ struct PopupView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "return")
                     Text(insertLabel)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+                }.frame(maxWidth: .infinity).padding(.vertical, 6)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .buttonStyle(.borderedProminent).controlSize(.large)
             .disabled(!viewModel.hasAnyTranslation || viewModel.isEditing)
             .keyboardShortcut(.defaultAction)
 
             Button(action: copyAction) {
-                Label("コピー", systemImage: "doc.on.doc")
-                    .labelStyle(.titleAndIcon)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+                Label("コピー", systemImage: "doc.on.doc").labelStyle(.titleAndIcon)
+                    .frame(maxWidth: .infinity).padding(.vertical, 6)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
+            .buttonStyle(.bordered).controlSize(.large)
             .disabled(!viewModel.hasAnyTranslation || viewModel.isEditing)
 
             Button(action: viewModel.onClose) {
-                Label("閉じる", systemImage: "xmark")
-                    .labelStyle(.titleAndIcon)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+                Label("閉じる", systemImage: "xmark").labelStyle(.titleAndIcon)
+                    .frame(maxWidth: .infinity).padding(.vertical, 6)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
+            .buttonStyle(.bordered).controlSize(.large)
             .keyboardShortcut(.cancelAction)
         }
     }

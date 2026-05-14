@@ -19,7 +19,12 @@ enum LanguageDetector {
         let deepLSource: String?
     }
 
-    static func detect(_ text: String, defaultTargetForEnglish: String = "JA") -> Pair {
+    static func detect(
+        _ text: String,
+        defaultTargetForEnglish: String = "JA",
+        defaultTargetForOther: String = "EN",
+        forceTargetShort: String? = nil   // explicit user override from popup picker
+    ) -> Pair {
         // 1. STRONG SCRIPT SIGNALS first — these are unambiguous and beat the NL recognizer
         //    (NL gets confused by mixed-language text, e.g. JA prose with embedded English code)
         let detected: LangInfo
@@ -33,24 +38,36 @@ enum LanguageDetector {
         }
 
         // 3. Pick target
-        // - If source is English → target is user's preferred (default Japanese)
-        // - Otherwise → target is English
+        //   priority: explicit override > defaultTargetForEnglish > defaultTargetForOther
         let target: LangInfo
-        if detected.short == "EN" {
-            target = mapping[defaultTargetForEnglish.lowercased()] ?? japanese
+        if let force = forceTargetShort,
+           let forced = mapping[force] ?? mapping[force.uppercased()] ?? mapping[force.lowercased()] {
+            target = forced
+        } else if detected.short == "EN" {
+            target = mapping[defaultTargetForEnglish.lowercased()] ?? mapping[defaultTargetForEnglish.uppercased()] ?? japanese
         } else {
-            target = english
+            target = mapping[defaultTargetForOther.lowercased()] ?? mapping[defaultTargetForOther.uppercased()] ?? english
         }
+        // Avoid same-language no-op (e.g. JA → JA): fall back to English
+        let finalTarget = (target.short == detected.short) ? english : target
 
         return Pair(
             sourceShort: detected.short,
-            targetShort: target.short,
+            targetShort: finalTarget.short,
             sourceFull: detected.fullName,
-            targetFull: target.fullName,
-            deepLTarget: target.deepLTarget,
+            targetFull: finalTarget.fullName,
+            deepLTarget: finalTarget.deepLTarget,
             deepLSource: detected.deepLSource
         )
     }
+
+    /// All available target languages for the popup picker.
+    static let availableTargets: [(short: String, fullName: String)] = [
+        ("EN", "English"), ("JA", "Japanese"), ("ZH", "Chinese"),
+        ("KO", "Korean"), ("ES", "Spanish"), ("FR", "French"),
+        ("DE", "German"), ("IT", "Italian"), ("PT", "Portuguese"),
+        ("RU", "Russian"),
+    ]
 
     // MARK: - Internal
 

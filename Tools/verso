@@ -1,0 +1,58 @@
+#!/bin/bash
+# Verso CLI shim — translate text from the terminal.
+# Usage:
+#   verso "your text here"
+#   echo "hello" | verso
+#   verso --target ZH "translate me to Chinese"
+#
+# Install:  cp Tools/verso /usr/local/bin/verso  (or any PATH dir)
+
+set -euo pipefail
+
+TARGET=""
+TEXT=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --target|-t)
+      TARGET="$2"; shift 2 ;;
+    --history)
+      open "verso://history"; exit 0 ;;
+    --settings)
+      open "verso://settings"; exit 0 ;;
+    --help|-h)
+      cat <<EOF
+verso — open the Verso translator from the terminal
+
+Usage:
+  verso "text"                         Translate "text" with auto target
+  verso --target JA "Hello world"      Force target language (JA, EN, ZH, KO, ES, FR, DE, IT, PT, RU)
+  echo "text" | verso                  Read from stdin
+  verso --history                      Open the History window
+  verso --settings                     Open Settings
+EOF
+      exit 0 ;;
+    *)
+      TEXT="${TEXT}${TEXT:+ }$1"; shift ;;
+  esac
+done
+
+# stdin fallback
+if [[ -z "$TEXT" && ! -t 0 ]]; then
+  TEXT=$(cat)
+fi
+
+if [[ -z "$TEXT" ]]; then
+  echo "verso: no text provided. Run 'verso --help' for usage." >&2
+  exit 1
+fi
+
+# URL-encode the text
+ENCODED=$(python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$TEXT")
+
+URL="verso://translate?text=$ENCODED"
+if [[ -n "$TARGET" ]]; then
+  URL="${URL}&target=$TARGET"
+fi
+
+open "$URL"
