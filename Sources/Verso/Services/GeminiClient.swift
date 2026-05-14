@@ -212,6 +212,49 @@ final class GeminiClient {
                                        textLen: originalText.count + currentTranslation.count)
     }
 
+    // MARK: - Translation chat (grammar / nuance / cultural Q&A)
+
+    /// Free-form Q&A about a translation. The LLM acts as a translation tutor:
+    /// answers grammar questions, explains nuance, suggests alternatives.
+    func chatAboutTranslation(
+        originalText: String,
+        translation: String,
+        sourceLang: String,
+        targetLang: String,
+        priorMessages: [ChatMessage],
+        newQuestion: String,
+        model: String,
+        apiKey: String
+    ) async throws -> (text: String, usage: GeminiUsage?) {
+        var historyBlock = ""
+        if !priorMessages.isEmpty {
+            historyBlock = "\n## CONVERSATION SO FAR\n" + priorMessages.map { msg in
+                "\(msg.role == .user ? "User" : "Assistant"): \(msg.content)"
+            }.joined(separator: "\n\n") + "\n"
+        }
+        let prompt = """
+        You are a translation tutor. The user is studying or refining a translation between languages and asking follow-up questions.
+
+        ## ORIGINAL (\(sourceLang))
+        \(originalText)
+
+        ## TRANSLATION (\(targetLang))
+        \(translation)
+        \(historyBlock)
+        ## CURRENT QUESTION
+        \(newQuestion)
+
+        Respond in the user's question language (mirror it — if they wrote Japanese, answer in Japanese; if English, English). \
+        Keep the answer focused and concise (under 250 words unless a detailed grammar breakdown is requested). \
+        Use clear examples when explaining nuance. \
+        If the user asks "なぜ" / "why", give the linguistic reason succinctly. \
+        Format: plain prose with optional inline examples in `code-style` quoting.
+        """
+        return try await callWithRetry(prompt: prompt, model: model, apiKey: apiKey,
+                                       textLen: originalText.count + translation.count + newQuestion.count
+                                                + priorMessages.reduce(0) { $0 + $1.content.count })
+    }
+
     // MARK: - Auto-glossary extraction (unchanged signature)
 
     func extractGlossaryDiff(

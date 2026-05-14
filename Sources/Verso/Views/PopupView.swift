@@ -21,6 +21,12 @@ final class PopupViewModel: ObservableObject {
     @Published var privacyMode: Bool
     @Published var conversationDepth: Int
 
+    // --- Grammar chat state ---
+    @Published var chatMessages: [ChatMessage] = []
+    @Published var chatInput: String = ""
+    @Published var isChatExpanded: Bool = false
+    @Published var isChatThinking: Bool = false
+
     let fromLang: String
     let toLang: String
 
@@ -37,6 +43,8 @@ final class PopupViewModel: ObservableObject {
     let onSpeak: (String) -> Void
     let onTryWithPro: () -> Void
     let onFurigana: () -> Void
+    let onSendChat: (String) -> Void
+    let onClearChat: () -> Void
 
     init(
         originalText: String, fromLang: String, toLang: String,
@@ -54,7 +62,9 @@ final class PopupViewModel: ObservableObject {
         onTogglePin: @escaping () -> Void,
         onSpeak: @escaping (String) -> Void,
         onTryWithPro: @escaping () -> Void,
-        onFurigana: @escaping () -> Void
+        onFurigana: @escaping () -> Void,
+        onSendChat: @escaping (String) -> Void,
+        onClearChat: @escaping () -> Void
     ) {
         self.originalText = originalText
         self.fromLang = fromLang
@@ -76,6 +86,8 @@ final class PopupViewModel: ObservableObject {
         self.onSpeak = onSpeak
         self.onTryWithPro = onTryWithPro
         self.onFurigana = onFurigana
+        self.onSendChat = onSendChat
+        self.onClearChat = onClearChat
     }
 
     var primaryInsertText: String {
@@ -134,6 +146,7 @@ struct PopupView: View {
                     icon: "sparkles", color: .purple,
                     state: viewModel.geminiState, isCompact: false, editable: true)
                 if viewModel.isGeminiOk && !viewModel.isEditing { refineBar }
+                if viewModel.isChatExpanded && viewModel.isGeminiOk { chatPanel }
                 actionBar
             }
             .padding(16)
@@ -147,8 +160,11 @@ struct PopupView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.toast)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isChatExpanded)
         .frame(minWidth: 500, idealWidth: 720, maxWidth: .infinity,
-               minHeight: 380, idealHeight: viewModel.showDeepLPanel ? 580 : 480, maxHeight: .infinity)
+               minHeight: 380,
+               idealHeight: viewModel.isChatExpanded ? 760 : (viewModel.showDeepLPanel ? 580 : 480),
+               maxHeight: .infinity)
         .background(keyboardShortcuts)
     }
 
@@ -245,13 +261,9 @@ struct PopupView: View {
                 if case .loading = state { ProgressView().controlSize(.mini) }
                 Spacer()
 
-                // 🔊 Speak (TTS)
                 if case .ok(let text) = state, !viewModel.isEditing {
-                    Button { viewModel.onSpeak(text) } label: {
-                        Image(systemName: "speaker.wave.2.fill")
-                    }
-                    .buttonStyle(.borderless).controlSize(.small)
-                    .help("読み上げ")
+                    Button { viewModel.onSpeak(text) } label: { Image(systemName: "speaker.wave.2.fill") }
+                        .buttonStyle(.borderless).controlSize(.small).help("読み上げ")
                 }
 
                 if case .failed = state {
@@ -341,6 +353,14 @@ struct PopupView: View {
                 Button { viewModel.onFurigana() }
                     label: { Label("ふりがな", systemImage: "character.book.closed.fill") }.help("漢字に読み仮名を付ける")
             }
+            Button {
+                viewModel.isChatExpanded.toggle()
+            } label: {
+                Label(viewModel.isChatExpanded ? "閉じる" : "解説",
+                      systemImage: viewModel.isChatExpanded ? "bubble.left.and.bubble.right.fill"
+                                                            : "bubble.left.and.bubble.right")
+            }
+            .help("文法・ニュアンスを質問する")
             if viewModel.canUndo {
                 Button { viewModel.onUndo() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }.help("⌘Z")
             }
@@ -352,6 +372,107 @@ struct PopupView: View {
         }
         .buttonStyle(.bordered).controlSize(.small)
         .disabled(viewModel.isRefining)
+    }
+
+    // MARK: - Chat panel (grammar / nuance Q&A)
+
+    private var chatPanel: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .foregroundColor(.accentColor).font(.caption).fontWeight(.bold)
+                Text("ASK ABOUT THIS TRANSLATION")
+                    .font(.caption2).fontWeight(.bold).tracking(0.8).foregroundColor(.accentColor)
+                if viewModel.isChatThinking { ProgressView().controlSize(.mini) }
+                Spacer()
+                if !viewModel.chatMessages.isEmpty {
+                    Button { viewModel.onClearChat() } label: {
+                        Label("Clear", systemImage: "trash").labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless).controlSize(.small).help("Clear chat")
+                }
+            }
+
+            // Messages list
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        if viewModel.chatMessages.isEmpty {
+                            Text("例:  「なぜ have to ではなく must なの？」 / 「もっと自然な言い方は？」 / 「文化的なニュアンスは？」")
+                                .font(.caption).foregroundColor(.secondary)
+                                .padding(8)
+                        }
+                        ForEach(viewModel.chatMessages) { msg in
+                            chatBubble(msg)
+                                .id(msg.id)
+                        }
+                    }
+                    .padding(8)
+                }
+                .frame(maxHeight: 200)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(10)
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor.opacity(0.3), lineWidth: 1))
+                .onChange(of: viewModel.chatMessages.count) { _ in
+                    if let last = viewModel.chatMessages.last {
+                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                    }
+                }
+            }
+
+            // Input row
+            HStack(spacing: 6) {
+                TextField("質問を入力 (例: なぜこの表現？)", text: $viewModel.chatInput, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...3)
+                    .onSubmit { sendChatIfReady() }
+                Button {
+                    sendChatIfReady()
+                } label: {
+                    Image(systemName: "paperplane.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .disabled(viewModel.chatInput.trimmingCharacters(in: .whitespaces).isEmpty
+                       || viewModel.isChatThinking)
+                .keyboardShortcut(.return, modifiers: .command)
+                .help("Send (⌘↵)")
+            }
+        }
+    }
+
+    private func chatBubble(_ msg: ChatMessage) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            if msg.role == .assistant {
+                Image(systemName: "sparkles")
+                    .foregroundColor(.purple).font(.caption2)
+                    .padding(.top, 4)
+            } else {
+                Spacer(minLength: 24)
+            }
+            Text(msg.content)
+                .font(.callout)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(msg.role == .user
+                            ? Color.accentColor.opacity(0.15)
+                            : Color(NSColor.windowBackgroundColor))
+                .cornerRadius(8)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: msg.role == .user ? .trailing : .leading)
+            if msg.role == .user {
+                Image(systemName: "person.fill")
+                    .foregroundColor(.accentColor).font(.caption2)
+                    .padding(.top, 4)
+            } else {
+                Spacer(minLength: 24)
+            }
+        }
+    }
+
+    private func sendChatIfReady() {
+        let q = viewModel.chatInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty, !viewModel.isChatThinking else { return }
+        viewModel.onSendChat(q)
     }
 
     private var addGlossaryPopover: some View {

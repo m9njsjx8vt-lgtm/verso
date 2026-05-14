@@ -4,6 +4,10 @@ options:
   deploymentTarget:
     macOS: "13.0"
   developmentLanguage: ja
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    minorVersion: 2.6.0
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -23,13 +27,16 @@ targets:
     platform: macOS
     sources:
       - path: Sources/Verso
+    dependencies:
+      - package: Sparkle
+        product: Sparkle
     info:
       path: Sources/Verso/Generated-Info.plist
       properties:
         LSUIElement: true
         LSMinimumSystemVersion: "13.0"
-        CFBundleShortVersionString: "0.7.0"
-        CFBundleVersion: "11"
+        CFBundleShortVersionString: "0.8.0"
+        CFBundleVersion: "12"
         CFBundleDisplayName: Verso
         CFBundleIconFile: AppIcon
         NSHighResolutionCapable: true
@@ -37,6 +44,13 @@ targets:
         NSScreenCaptureUsageDescription: "Verso captures the area you select to OCR and translate the text in it."
         NSAccessibilityUsageDescription: "Verso watches for ⌘C×2 and ⌥⇧C globally so you can translate from any app. It does NOT log keystrokes."
         NSHumanReadableCopyright: "© 2026 Tomoro Iwasaki"
+        # Sparkle auto-update — REPLACE these with real values via docs/sparkle-handoff.md
+        # before first signed release. Until then, 'Check for Updates' menu item is hidden.
+        SUFeedURL: "https://example.com/REPLACE_ME/appcast.xml"
+        SUPublicEDKey: "REPLACE_ME_BASE64_EDDSA_PUBLIC_KEY"
+        SUEnableInstallerLauncherService: false
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
         # URL scheme — `open verso://translate?text=hello` from anywhere
         CFBundleURLTypes:
           - CFBundleURLName: "Verso translate URL"

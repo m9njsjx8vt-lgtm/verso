@@ -22,6 +22,7 @@ final class PopupController {
     private var learnTask: Task<Void, Never>?
     private var altTask: Task<Void, Never>?
     private var furiganaTask: Task<Void, Never>?
+    private var chatTask: Task<Void, Never>?
 
     private var activeLangPair: LanguageDetector.Pair?
     private var activeOriginal: String = ""
@@ -112,7 +113,11 @@ final class PopupController {
                 self.tts.speak(text, languageShort: pair.targetShort)
             },
             onTryWithPro: { [weak self] in self?.tryWithPro() },
-            onFurigana: { [weak self] in self?.addFurigana() }
+            onFurigana: { [weak self] in self?.addFurigana() },
+            onSendChat: { [weak self] question in self?.sendChat(question: question) },
+            onClearChat: { [weak self] in
+                self?.currentViewModel?.chatMessages.removeAll()
+            }
         )
         currentViewModel = viewModel
 
@@ -490,6 +495,51 @@ final class PopupController {
         if restoreFocus, let app = app { app.activate() }
     }
 
+    /// Send a follow-up question to the LLM about the current translation.
+    private func sendChat(question: String) {
+        guard let vm = currentViewModel, vm.isGeminiOk,
+              let pair = activeLangPair else { return }
+        let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        vm.chatMessages.append(ChatMessage(role: .user, content: trimmed))
+        vm.chatInput = ""
+        vm.isChatThinking = true
+
+        let priorMessages = Array(vm.chatMessages.dropLast())
+        let translation = vm.geminiText
+
+        chatTask?.cancel()
+        chatTask = Task { @MainActor [weak self, weak vm] in
+            guard let self = self, let vm = vm else { return }
+            do {
+                let result = try await self.geminiClient.chatAboutTranslation(
+                    originalText: vm.originalText,
+                    translation: translation,
+                    sourceLang: pair.sourceFull,
+                    targetLang: pair.targetFull,
+                    priorMessages: priorMessages,
+                    newQuestion: trimmed,
+                    model: self.settings.model,
+                    apiKey: self.settings.apiKey
+                )
+                if Task.isCancelled { vm.isChatThinking = false; return }
+                vm.chatMessages.append(ChatMessage(role: .assistant, content: result.text))
+                vm.isChatThinking = false
+                if let u = result.usage {
+                    self.usage.record(model: self.settings.model,
+                                      promptTokens: u.promptTokens,
+                                      responseTokens: u.responseTokens)
+                }
+            } catch {
+                if Task.isCancelled { vm.isChatThinking = false; return }
+                vm.chatMessages.append(ChatMessage(role: .assistant,
+                                                   content: "⚠️ \(error.localizedDescription)"))
+                vm.isChatThinking = false
+            }
+        }
+    }
+
     private func cancelAllTasks() {
         deepLTask?.cancel(); deepLTask = nil
         geminiTask?.cancel(); geminiTask = nil
@@ -497,5 +547,6 @@ final class PopupController {
         learnTask?.cancel(); learnTask = nil
         altTask?.cancel(); altTask = nil
         furiganaTask?.cancel(); furiganaTask = nil
+        chatTask?.cancel(); chatTask = nil
     }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Sparkle
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -9,6 +10,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let usage = UsageTracker()
     let cache = TranslationCache()
     let network = NetworkMonitor()
+
+    /// Sparkle updater. Pulls appcast from Info.plist SUFeedURL, checks daily,
+    /// verifies new builds via SUPublicEDKey signature.
+    let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
 
     private var statusItem: NSStatusItem?
     private var hotkeyMonitor: HotkeyMonitor?
@@ -74,6 +83,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                    action: #selector(togglePause), keyEquivalent: "")
         pauseItem.tag = 999
         menu.addItem(pauseItem)
+        // Show 'Check for Updates' only if a real SUFeedURL is configured
+        if let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+           !feed.contains("REPLACE_ME") {
+            let updateItem = NSMenuItem(title: "Check for Updates…",
+                                        action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+                                        keyEquivalent: "")
+            updateItem.target = updaterController
+            menu.addItem(updateItem)
+        }
         menu.addItem(.init(title: "Settings…",
                            action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(.init(title: "Show Welcome Tour…",
