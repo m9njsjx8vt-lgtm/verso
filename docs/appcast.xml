@@ -10,5 +10,24 @@
       from running `sign_update <DMG-path>` after build_dmg.sh, which prints
       the signature line to copy in. See docs/sparkle-handoff.md.
     -->
+    <item>
+      <title>v0.8.0</title>
+      <pubDate>Thu, 14 May 2026 22:23:46 +0900</pubDate>
+      <sparkle:version>12</sparkle:version>
+      <sparkle:shortVersionString>0.8.0</sparkle:shortVersionString>
+      <description><![CDATA[
+        <ul>
+          <li>Initial public release with Sparkle auto-update.</li>
+          <li>Streaming Gemini, parallel DeepL preview, refine buttons, undo, edit-and-learn glossary.</li>
+          <li>History, conversation mode, OCR (region + window), TTS, multi-language picker, Pro fallback, furigana.</li>
+          <li>Grammar chat — ask about the translation in-popup.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/m9njsjx8vt-lgtm/verso/releases/download/v0.8.0/Verso-v0.8.0.dmg"
+        sparkle:edSignature="ytv7QBwgeSUsv6AUa3IoYiVQ72hiAC9p1SY/qMSKwtO+P8u0hz7AYblKoWIAJek35kdwyolTAWPbtrgXChI0CQ=="
+        length="2533270"
+        type="application/octet-stream" />
+    </item>
   </channel>
 </rss>

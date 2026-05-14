@@ -73,9 +73,9 @@
 	<key>SUEnableInstallerLauncherService</key>
 	<false/>
 	<key>SUFeedURL</key>
-	<string>https://example.com/REPLACE_ME/appcast.xml</string>
+	<string>https://m9njsjx8vt-lgtm.github.io/verso/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_ME_BASE64_EDDSA_PUBLIC_KEY</string>
+	<string>aVgntSFEasAg4ONSz47gO8R3Ir3IUDoJSnO6etS6Q74=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 </dict>

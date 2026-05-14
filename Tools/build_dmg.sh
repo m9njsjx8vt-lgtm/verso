@@ -76,7 +76,6 @@ if [ -x "$SPARKLE_BIN/sign_update" ]; then
       <enclosure
         url="https://github.com/$(gh api user --jq .login 2>/dev/null || echo USERNAME)/verso/releases/download/v${VERSION}/${DMG_NAME}"
         ${SIGNATURE_OUTPUT}
-        length="${DMG_SIZE_BYTES}"
         type="application/octet-stream" />
     </item>
 
