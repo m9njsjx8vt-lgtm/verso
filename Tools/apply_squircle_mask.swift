@@ -31,10 +31,20 @@ guard let ctx = NSGraphicsContext.current?.cgContext else {
 // Fill with transparency first (defensive)
 ctx.clear(CGRect(origin: .zero, size: size))
 
-// Squircle path — 22% corner radius matches macOS app icon shape
-let cornerRadius: CGFloat = 224
+// AI-generated icons often paint an outer highlight/glow around their own
+// squircle, which leaks as a bright rim if we clip at the full 1024×1024
+// boundary. Inset the clip so we cut INSIDE the source's dark squircle.
+//
+// `clipInset` can be tuned per-source. Default 28px works for the current
+// purple-V image. Override via env var SQUIRCLE_INSET=<px>.
+let envInset = ProcessInfo.processInfo.environment["SQUIRCLE_INSET"].flatMap { Double($0) }
+let clipInset: CGFloat = CGFloat(envInset ?? 90.0)
+
+// Squircle path — 22% corner radius (matches macOS), inset by clipInset on all sides
+let cornerRadius: CGFloat = 224 - clipInset
+let bgRect = CGRect(origin: .zero, size: size).insetBy(dx: clipInset, dy: clipInset)
 let bgPath = CGPath(
-    roundedRect: CGRect(origin: .zero, size: size),
+    roundedRect: bgRect,
     cornerWidth: cornerRadius,
     cornerHeight: cornerRadius,
     transform: nil
@@ -43,7 +53,8 @@ ctx.saveGState()
 ctx.addPath(bgPath)
 ctx.clip()
 
-// Draw the source image scaled to fill the canvas
+// Draw the source image scaled to fill the FULL canvas; the clip will trim
+// it to the inset squircle.
 inImage.draw(in: CGRect(origin: .zero, size: size),
              from: .zero,
              operation: .sourceOver,
