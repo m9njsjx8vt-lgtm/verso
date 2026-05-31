@@ -1,10 +1,25 @@
-# Sparkle 自動アップデート — 1度だけやれば永続セットアップ
+# Sparkle 自動アップデート — 運用メモ
 
-Verso v0.8.0 に Sparkle SPM dependency と Updater は組み込み済。残りは:
-1. EdDSAキーペア生成
-2. Info.plist の `SUFeedURL` と `SUPublicEDKey` を実値に置換
-3. GitHub Pages 等で `appcast.xml` をホスト
-4. リリース毎に DMG → sign_update → appcast 更新
+Current state (2026-05-31):
+
+- GitHub repo: `https://github.com/m9njsjx8vt-lgtm/verso` is public.
+- GitHub Pages source: `main:/docs`.
+- Live appcast: `https://m9njsjx8vt-lgtm.github.io/verso/appcast.xml`.
+- Releases `v0.8.0` and `v0.9.0` are publicly downloadable.
+- On this Mac, future distributable builds still need the `Verso Self-Signed`
+  code-signing identity. `xcodegen` is recommended, but the scripts can use the
+  checked-in/generated `Verso.xcodeproj` when it already exists.
+
+Verso v0.9.0 時点で Sparkle SPM dependency、Updater、EdDSA公開鍵、
+`SUFeedURL`、GitHub Pages appcast hosting は設定済み。
+
+次回以降のリリース毎に必要なのは:
+
+1. `project.yml` の version/build number 更新
+2. `Verso Self-Signed` 証明書がある環境で DMG 作成
+3. `sign_update` 出力を `docs/appcast.xml` に追加
+4. GitHub Release 作成
+5. `docs/appcast.xml` を push して Pages 反映確認
 
 実時間 ~1.5時間 (内 GitHub操作・確認多め)。
 

@@ -10,15 +10,22 @@ Built to replace [Nani](https://nani.now) and DeepL with:
 ## Build & Run
 
 ```bash
-brew install xcodegen           # one-time
-cd ~/Projects/Translator
-xcodegen                        # generates Verso.xcodeproj
-xcodebuild -scheme Verso -configuration Debug \
-  -destination 'platform=macOS' -derivedDataPath ./build build
-open ./build/Build/Products/Debug/Verso.app
+cd ~/Projects/translator
+./script/build_and_run.sh --verify
 ```
 
-Or open in Xcode:
+The script uses full Xcode from `/Applications/Xcode.app` when available,
+builds into `./build`, launches the freshly built app, and falls back to an
+unsigned Debug build when the local `Verso Self-Signed` certificate is missing.
+
+Install XcodeGen when you want to regenerate the project from `project.yml`:
+
+```bash
+brew install xcodegen
+xcodegen
+```
+
+Or open the generated project in Xcode:
 
 ```bash
 xcodegen && open Verso.xcodeproj
@@ -72,8 +79,19 @@ Tools/
 # Default: Georgia-Bold serif "V" at 760pt (matches the Verso brand)
 swift Tools/make_icon.swift /tmp/icon.png V "Georgia-Bold" 760
 Tools/build_icns.sh /tmp/icon.png Sources/Verso/Resources/AppIcon.icns
-xcodegen && xcodebuild -scheme Verso -configuration Debug \
-  -destination 'platform=macOS' -derivedDataPath ./build build
+./script/build_and_run.sh --verify
+```
+
+## Release
+
+Current Sparkle feed:
+https://m9njsjx8vt-lgtm.github.io/verso/appcast.xml
+
+To build a distributable DMG, import or create the `Verso Self-Signed` signing
+identity first, then run:
+
+```bash
+./Tools/build_dmg.sh 0.9.1
 ```
 
 ## Naming
