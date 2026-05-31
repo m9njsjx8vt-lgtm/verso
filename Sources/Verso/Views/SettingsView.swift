@@ -93,11 +93,10 @@ struct SettingsView: View {
                         Text("⌥⇧C    →  画面領域 OCR 翻訳").font(.system(.body, design: .monospaced))
                         Text("⌘⇧H    →  History").font(.system(.body, design: .monospaced))
                         Text("⌘⇧V    →  クリップボード翻訳").font(.system(.body, design: .monospaced))
+                        Text("⌘⇧T    →  翻訳ワークスペース").font(.system(.body, design: .monospaced))
                     }
                     .font(.system(size: 13)).foregroundColor(.secondary)
                 }
-
-                Divider()
 
                 Divider()
 
@@ -276,7 +275,7 @@ struct SettingsView: View {
             Text("Verso").font(.title).bold()
             Text("Personal AI translation, on every page")
                 .font(.callout).foregroundColor(.secondary)
-            Text("v0.9.0").foregroundColor(.secondary).padding(.top, 4)
+            Text(appVersionText).foregroundColor(.secondary).padding(.top, 4)
             VStack(spacing: 4) {
                 Text("⌘C×2  →  選択翻訳")
                 Text("⌥⇧C   →  領域OCR翻訳")
@@ -286,6 +285,13 @@ struct SettingsView: View {
             Spacer()
         }
         .padding().frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var appVersionText: String {
+        let info = Bundle.main.infoDictionary
+        let shortVersion = info?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+        let build = info?["CFBundleVersion"] as? String ?? ""
+        return build.isEmpty ? "v\(shortVersion)" : "v\(shortVersion) (\(build))"
     }
 }
 

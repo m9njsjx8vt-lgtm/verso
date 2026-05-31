@@ -1,8 +1,9 @@
 import Foundation
 import CryptoKit
 
-/// In-memory LRU-ish cache for completed translations. Keyed by SHA256 of
-/// (text + sourceLang + targetLang + glossaryHash). Cleared on app restart.
+/// In-memory LRU-ish cache for completed translations. Keyed by SHA256 of the
+/// text plus every setting that can materially change the translation. Cleared
+/// on app restart.
 @MainActor
 final class TranslationCache {
     struct Entry {
@@ -15,8 +16,24 @@ final class TranslationCache {
     private let maxEntries = 500
     private var insertionOrder: [String] = []
 
-    func key(text: String, source: String, target: String, glossary: String) -> String {
-        let combined = "\(source)→\(target)|\(glossary.count)|\(text)"
+    func key(
+        text: String,
+        source: String,
+        target: String,
+        glossary: String,
+        context: String,
+        model: String,
+        preserveMarkdownAndCode: Bool
+    ) -> String {
+        let combined = [
+            "source=\(source)",
+            "target=\(target)",
+            "model=\(model)",
+            "preserve=\(preserveMarkdownAndCode)",
+            "glossary=\(glossary)",
+            "context=\(context)",
+            "text=\(text)"
+        ].joined(separator: "\n---\n")
         let digest = SHA256.hash(data: Data(combined.utf8))
         return digest.compactMap { String(format: "%02x", $0) }.joined()
     }

@@ -52,8 +52,15 @@ enum SecretsStore {
                 [.posixPermissions: 0o600],
                 ofItemAtPath: tmpURL.path
             )
-            // Atomic rename
-            _ = try FileManager.default.replaceItemAt(storeURL, withItemAt: tmpURL)
+            if FileManager.default.fileExists(atPath: storeURL.path) {
+                _ = try FileManager.default.replaceItemAt(storeURL, withItemAt: tmpURL)
+            } else {
+                try FileManager.default.moveItem(at: tmpURL, to: storeURL)
+            }
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: storeURL.path
+            )
             return true
         } catch {
             print("[secrets] save error: \(error)")

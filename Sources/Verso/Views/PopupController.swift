@@ -69,7 +69,7 @@ final class PopupController {
 
         let deepLConfigured = !settings.deeplApiKey.isEmpty
 
-        close(restoreFocus: false)
+        close(restoreFocus: false, preserveConversation: settings.stayOpen)
 
         let viewModel = PopupViewModel(
             originalText: originalText,
@@ -142,10 +142,7 @@ final class PopupController {
             return
         }
 
-        let cacheKey = cache.key(text: originalText,
-                                 source: pair.sourceShort,
-                                 target: pair.targetShort,
-                                 glossary: glossary.formattedForPrompt())
+        let cacheKey = makeCacheKey(text: originalText, pair: pair)
 
         if settings.cacheEnabled, let entry = cache.get(cacheKey) {
             if let g = entry.geminiTranslation { viewModel.geminiState = .ok(g) }
@@ -169,11 +166,7 @@ final class PopupController {
         let originalText = activeOriginal
         let appHint = sourceApp?.localizedName
 
-        // Build conversation context block (only if pinned + has prior turns)
-        let conversationContext = settings.stayOpen ? buildConversationContextBlock() : nil
-        let extendedContext = [settings.translatorContext, conversationContext]
-            .compactMap { $0?.trimmingCharacters(in: .whitespaces).isEmpty == false ? $0 : nil }
-            .joined(separator: "\n\n")
+        let extendedContext = activePromptContext()
 
         // DeepL preview
         if !settings.deeplApiKey.isEmpty {
@@ -248,6 +241,30 @@ final class PopupController {
         return lines.joined(separator: "\n")
     }
 
+    private func activePromptContext() -> String {
+        let conversationContext = settings.stayOpen ? buildConversationContextBlock() : nil
+        return [settings.translatorContext, conversationContext]
+            .compactMap { value in
+                guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !value.isEmpty
+                else { return nil }
+                return value
+            }
+            .joined(separator: "\n\n")
+    }
+
+    private func makeCacheKey(text: String, pair: LanguageDetector.Pair) -> String {
+        cache.key(
+            text: text,
+            source: pair.sourceShort,
+            target: pair.targetShort,
+            glossary: glossary.formattedForPrompt(),
+            context: activePromptContext(),
+            model: settings.model,
+            preserveMarkdownAndCode: settings.preserveMarkdownAndCode
+        )
+    }
+
     private func refine(instruction: String) {
         guard let vm = currentViewModel, vm.isGeminiOk,
               let pair = activeLangPair else { return }
@@ -296,10 +313,7 @@ final class PopupController {
 
     private func retry() {
         guard let vm = currentViewModel, let pair = activeLangPair else { return }
-        let cacheKey = cache.key(text: activeOriginal,
-                                 source: pair.sourceShort,
-                                 target: pair.targetShort,
-                                 glossary: glossary.formattedForPrompt())
+        let cacheKey = makeCacheKey(text: activeOriginal, pair: pair)
         vm.geminiState = .loading
         if vm.showDeepLPanel { vm.deepLState = .loading }
         startInitialTranslations(viewModel: vm, cacheKey: cacheKey)
@@ -482,7 +496,7 @@ final class PopupController {
         }
     }
 
-    func close(restoreFocus: Bool) {
+    func close(restoreFocus: Bool, preserveConversation: Bool = false) {
         let app = sourceApp
         cancelAllTasks()
         tts.stop()
@@ -491,7 +505,9 @@ final class PopupController {
         window?.orderOut(nil)
         window = nil
         currentViewModel = nil
-        conversationHistory.removeAll()
+        if !preserveConversation {
+            conversationHistory.removeAll()
+        }
         if restoreFocus, let app = app { app.activate() }
     }
 
