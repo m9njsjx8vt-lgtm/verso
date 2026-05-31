@@ -38,8 +38,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         popupController = popup
         ocrCoordinator = OCRCoordinator(popupController: popup)
-        historyWindowController = HistoryWindowController(history: history, popupController: popup)
-        workspaceWindowController = WorkspaceWindowController(popupController: popup)
+        workspaceWindowController = WorkspaceWindowController(
+            popupController: popup,
+            settings: settings,
+            glossary: glossary,
+            history: history,
+            usage: usage,
+            cache: cache,
+            network: network
+        )
+        historyWindowController = HistoryWindowController(
+            history: history,
+            popupController: popup,
+            workspaceController: workspaceWindowController
+        )
 
         setupCmdCHotkey()
         setupAuxHotkeys()
@@ -247,11 +259,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "translate":
             if let text = comps.queryItems?.first(where: { $0.name == "text" })?.value, !text.isEmpty {
                 let target = comps.queryItems?.first(where: { $0.name == "target" })?.value
-                popupController?.show(originalText: text, forceTarget: target)
+                let mode = comps.queryItems?.first(where: { $0.name == "mode" })?.value
+                if mode == "workspace" {
+                    workspaceWindowController?.show(text: text, forceTarget: target, translateImmediately: true)
+                } else {
+                    popupController?.show(originalText: text, forceTarget: target)
+                }
             }
         case "history": showHistory()
         case "settings": openSettings()
-        case "workspace": openWorkspace()
+        case "workspace":
+            let text = comps.queryItems?.first(where: { $0.name == "text" })?.value
+            let target = comps.queryItems?.first(where: { $0.name == "target" })?.value
+            let translate = comps.queryItems?.first(where: { $0.name == "translate" })?.value == "1"
+            workspaceWindowController?.show(
+                text: text,
+                forceTarget: target,
+                translateImmediately: translate
+            )
         default: break
         }
     }

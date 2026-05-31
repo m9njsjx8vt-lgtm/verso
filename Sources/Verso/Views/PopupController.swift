@@ -243,14 +243,7 @@ final class PopupController {
 
     private func activePromptContext() -> String {
         let conversationContext = settings.stayOpen ? buildConversationContextBlock() : nil
-        return [settings.translatorContext, conversationContext]
-            .compactMap { value in
-                guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !value.isEmpty
-                else { return nil }
-                return value
-            }
-            .joined(separator: "\n\n")
+        return settings.promptContext(additionalBlocks: [conversationContext])
     }
 
     private func makeCacheKey(text: String, pair: LanguageDetector.Pair) -> String {

@@ -6,10 +6,16 @@ final class HistoryWindowController {
     private let history: HistoryStore
     private var window: NSWindow?
     private weak var popupController: PopupController?
+    private weak var workspaceController: WorkspaceWindowController?
 
-    init(history: HistoryStore, popupController: PopupController) {
+    init(
+        history: HistoryStore,
+        popupController: PopupController,
+        workspaceController: WorkspaceWindowController?
+    ) {
         self.history = history
         self.popupController = popupController
+        self.workspaceController = workspaceController
     }
 
     func show() {
@@ -23,6 +29,13 @@ final class HistoryWindowController {
             history: history,
             onInsert: { [weak self] translation in
                 self?.insertAndClose(translation)
+            },
+            onOpenWorkspace: { [weak self] entry in
+                self?.workspaceController?.show(
+                    text: entry.sourceText,
+                    forceTarget: entry.targetLang,
+                    translateImmediately: false
+                )
             },
             onClose: { [weak self] in
                 self?.close()

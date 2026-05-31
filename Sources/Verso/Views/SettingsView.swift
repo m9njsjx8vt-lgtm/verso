@@ -66,6 +66,22 @@ struct SettingsView: View {
                 Divider()
 
                 Group {
+                    Text("Translation Style").font(.headline)
+                    Picker("", selection: $settings.translationStyle) {
+                        ForEach(TranslationStyle.allCases) { style in
+                            Text(style.title).tag(style.rawValue)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    Text(settings.selectedTranslationStyle.subtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Divider()
+
+                Group {
                     Text("DeepL API Key (任意・即時プレビュー用)").font(.headline)
                     Text("登録すると⌘C×2した瞬間にDeepLの即時翻訳が出ます。月50万文字まで無料。Get a free key at [deepl.com/pro-api](https://www.deepl.com/pro-api).")
                         .font(.caption).foregroundColor(.secondary)

@@ -6,6 +6,7 @@ struct HistoryView: View {
     @State private var selectedID: HistoryEntry.ID?
 
     let onInsert: (String) -> Void
+    let onOpenWorkspace: (HistoryEntry) -> Void
     let onClose: () -> Void
 
     private var filtered: [HistoryEntry] {
@@ -47,6 +48,9 @@ struct HistoryView: View {
                         HistoryRow(entry: entry)
                             .tag(entry.id)
                             .contextMenu {
+                                Button("Open in workspace") {
+                                    onOpenWorkspace(entry)
+                                }
                                 Button("Insert into source") {
                                     onInsert(entry.translation)
                                 }
@@ -80,6 +84,11 @@ struct HistoryView: View {
                         Label("Insert", systemImage: "return")
                     }
                     .keyboardShortcut(.defaultAction)
+                    Button {
+                        onOpenWorkspace(entry)
+                    } label: {
+                        Label("Workspace", systemImage: "character.bubble")
+                    }
                     Button("Copy") {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(entry.translation, forType: .string)

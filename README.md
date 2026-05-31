@@ -6,6 +6,8 @@ Built to replace [Nani](https://nani.now) and DeepL with:
 - **No usage caps** — uses your own Gemini API key (free tier ≈ 1000 RPD on Flash-Lite)
 - **Personal context injection** — teach Verso your tone, glossary, and proper nouns
 - **Auto-dismissing popup** that disappears the moment you click anywhere else (DeepL behavior)
+- **Workspace mode** — keep a regular translation window open for longer text and edits
+- **Translation styles** — switch between direct business, casual, polished, literal, and MBA English modes
 
 ## Build & Run
 
@@ -41,12 +43,22 @@ xcodegen && open Verso.xcodeproj
 
 ## Use
 
+### Popup
+
 - Select any text in any app
 - Press ⌘C twice quickly
 - Popup appears near your cursor with the translation
 - `Enter` → replace selection with the translation
 - `Esc` → dismiss
 - Click anywhere else → also dismiss
+
+### Workspace
+
+- Press `⌘⇧T` or choose **Open Workspace** from the menu bar
+- Paste or type longer text
+- Choose a target language and translation style
+- Press `⌘↵` to translate inline
+- Copy the result, send the same source text to the popup, or use the result as the next source text
 
 ## Project structure
 
@@ -66,6 +78,8 @@ Sources/Verso/
     ├── PopupController.swift   # Manages popup lifecycle
     ├── PopupWindow.swift       # NSPanel subclass
     ├── PopupView.swift         # SwiftUI popup contents
+    ├── WorkspaceWindowController.swift # Persistent inline translation window
+    ├── HistoryView.swift       # Searchable translation history
     └── SettingsView.swift      # Settings window (General / Personalization / About)
 
 Tools/
