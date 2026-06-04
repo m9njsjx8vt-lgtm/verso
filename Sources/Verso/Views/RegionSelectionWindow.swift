@@ -17,13 +17,17 @@ final class RegionSelectionWindow: NSWindow {
         self.onCancel = onCancel
         self.selectionView = SelectionView()
 
+        // Avoid NSWindow's screen-specific convenience initializer here.
+        // On macOS 26 it can dispatch back into the Swift subclass initializer
+        // before RegionSelectionWindow's stored properties are valid, causing
+        // an EXC_BREAKPOINT when starting region OCR.
         super.init(
             contentRect: screen.frame,
             styleMask: [.borderless],
             backing: .buffered,
-            defer: false,
-            screen: screen
+            defer: false
         )
+        setFrame(screen.frame, display: false)
 
         backgroundColor = NSColor.black.withAlphaComponent(0.30)
         isOpaque = false
