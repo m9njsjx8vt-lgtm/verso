@@ -64,7 +64,12 @@ final class WorkspaceWindowController {
 
 @MainActor
 final class WorkspaceViewModel: ObservableObject {
-    @Published var inputText: String = ""
+    @Published var inputText: String = "" {
+        didSet {
+            guard inputText != oldValue else { return }
+            resetResultAfterInputChange()
+        }
+    }
     @Published var resultText: String = ""
     @Published var selectedTarget: String = "auto"
     @Published var statusText: String = ""
@@ -82,6 +87,7 @@ final class WorkspaceViewModel: ObservableObject {
     private let geminiClient = GeminiClient()
     private let localAIClient = LocalAIClient()
     private var translateTask: Task<Void, Never>?
+    private var translationRunID = UUID()
 
     init(
         popupController: PopupController,
@@ -123,6 +129,8 @@ final class WorkspaceViewModel: ObservableObject {
         guard !text.isEmpty else { return }
 
         translateTask?.cancel()
+        let runID = UUID()
+        translationRunID = runID
         errorText = nil
         resultText = ""
         let useLocalAI = settings.usesLocalAI || !network.isOnline
@@ -163,7 +171,11 @@ final class WorkspaceViewModel: ObservableObject {
 
         translateTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.isTranslating = false }
+            defer {
+                if self.translationRunID == runID {
+                    self.isTranslating = false
+                }
+            }
             do {
                 let result: (text: String, usage: GeminiUsage?)
                 if useLocalAI {
@@ -180,7 +192,10 @@ final class WorkspaceViewModel: ObservableObject {
                         model: self.settings.localAIModel,
                         onChunk: { [weak self] partial in
                             await MainActor.run {
-                                guard let self, !Task.isCancelled else { return }
+                                guard let self,
+                                      self.translationRunID == runID,
+                                      !Task.isCancelled
+                                else { return }
                                 self.resultText = partial
                                 self.statusText = "Translating · \(providerTitle) · \(self.sourceTargetSummary)"
                             }
@@ -199,14 +214,17 @@ final class WorkspaceViewModel: ObservableObject {
                         apiKey: self.settings.apiKey,
                         onChunk: { [weak self] partial in
                             await MainActor.run {
-                                guard let self, !Task.isCancelled else { return }
+                                guard let self,
+                                      self.translationRunID == runID,
+                                      !Task.isCancelled
+                                else { return }
                                 self.resultText = partial
                                 self.statusText = "Translating · \(providerTitle) · \(self.sourceTargetSummary)"
                             }
                         }
                     )
                 }
-                if Task.isCancelled { return }
+                guard self.translationRunID == runID, !Task.isCancelled else { return }
 
                 self.resultText = result.text
                 self.statusText = "Done · \(providerTitle) · \(self.sourceTargetSummary)"
@@ -222,9 +240,11 @@ final class WorkspaceViewModel: ObservableObject {
                 }
                 self.recordHistory(sourceText: text, translation: result.text, pair: pair)
             } catch is CancellationError {
-                self.statusText = "Cancelled"
+                if self.translationRunID == runID {
+                    self.statusText = "Cancelled"
+                }
             } catch {
-                if Task.isCancelled { return }
+                guard self.translationRunID == runID, !Task.isCancelled else { return }
                 self.errorText = error.localizedDescription
                 self.statusText = ""
             }
@@ -234,6 +254,7 @@ final class WorkspaceViewModel: ObservableObject {
     func cancelTranslation() {
         translateTask?.cancel()
         translateTask = nil
+        translationRunID = UUID()
         isTranslating = false
         statusText = "Cancelled"
     }
@@ -250,7 +271,6 @@ final class WorkspaceViewModel: ObservableObject {
     func loadFromClipboard() {
         if let s = NSPasteboard.general.string(forType: .string), !s.isEmpty {
             inputText = s
-            errorText = nil
         } else {
             NSSound.beep()
         }
@@ -271,10 +291,6 @@ final class WorkspaceViewModel: ObservableObject {
         let text = resultText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         inputText = text
-        resultText = ""
-        errorText = nil
-        statusText = ""
-        sourceTargetSummary = ""
     }
 
     func openPopupForInput() {
@@ -308,6 +324,20 @@ final class WorkspaceViewModel: ObservableObject {
             translation: translation,
             sourceApp: "Verso Workspace"
         )
+    }
+
+    private func resetResultAfterInputChange() {
+        translateTask?.cancel()
+        translateTask = nil
+        translationRunID = UUID()
+        isTranslating = false
+
+        resultText = ""
+        errorText = nil
+        sourceTargetSummary = ""
+        statusText = inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? ""
+            : "Edited · translate to refresh"
     }
 }
 
