@@ -27,8 +27,8 @@ Use Local AI when you want offline/private translation on this Mac.
 
 1. In the welcome tour, choose **Local AI**.
 2. Use **Start Ollama** or **Open LM Studio**.
-3. Verso auto-checks installed models when the setup/settings screen opens.
-4. Use **Refresh Models** to retry manually, then choose the detected model.
+3. Verso auto-checks the saved endpoint when the setup/settings screen opens.
+4. Use **Detect Local AI** to search common Ollama / LM Studio local endpoints, or **Refresh Models** to retry the current endpoint manually.
 5. Press **Test Local AI**.
 
 Gemini is optional. Use it when internet access is available and cloud translation quality is preferred. If Gemini is selected but its API key is blank, Verso automatically uses Local AI for translation.
@@ -91,7 +91,7 @@ Use **Settings → Glossary** for terms that should always translate the same wa
 
 1. Settings → General → AI Engine → Local AI.
 2. Press **Start Ollama** or **Open LM Studio**.
-3. Press **Refresh Models**.
+3. Press **Detect Local AI**. If you typed a custom endpoint, press **Refresh Models**.
 4. Press **Test Local AI**.
 
 ### Translation quality is weak

@@ -361,7 +361,7 @@ struct SettingsView: View {
                 }
             }
 
-            Text("Ollama は通常 `ollama serve` 起動中の `http://localhost:11434` を使います。LM Studio は Local Server を起動して OpenAI Compatible を選びます。")
+            Text("Detect Local AI はOllama / LM Studio系のローカルサーバーを探します。Ollama は通常 `http://localhost:11434`、LM Studio は OpenAI Compatible の `/v1` endpoint を使います。")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }

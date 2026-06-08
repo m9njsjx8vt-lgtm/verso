@@ -233,7 +233,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("1.  Ollama または LM Studio のローカルサーバーを起動")
                 Text("2.  Backend と Endpoint を確認")
-                Text("3.  Refresh Models でモデルを選択")
+                Text("3.  Detect Local AI または Refresh Models でモデルを選択")
                 Text("4.  Test Local AI で接続確認")
             }
             .font(.callout)
@@ -401,7 +401,7 @@ struct OnboardingView: View {
                 }
             }
 
-            Text("Local AIを選ぶと、インターネット接続がなくてもメイン翻訳を実行できます。DeepLプレビューだけはクラウド接続が必要です。")
+            Text("Detect Local AI はOllama / LM Studio系のローカルサーバーを探します。Local AI翻訳はネットなしで動き、DeepLプレビューだけはクラウド接続が必要です。")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
