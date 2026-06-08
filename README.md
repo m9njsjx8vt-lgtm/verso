@@ -112,10 +112,17 @@ Tools/
 ## Regenerate icon
 
 ```bash
-# Default: Georgia-Bold serif "V" at 760pt (matches the Verso brand)
-swift Tools/make_icon.swift /tmp/icon.png V "Georgia-Bold" 760
-Tools/build_icns.sh /tmp/icon.png Sources/Verso/Resources/AppIcon.icns
+# AppIconSource.png is the checked-in AI-generated source artwork.
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  Tools/build_icns.sh Sources/Verso/Resources/AppIconSource.png Sources/Verso/Resources/AppIcon.icns
 ./script/build_and_run.sh --verify
+```
+
+For a fresh generated source image, normalize it first so `iconutil` receives an RGBA PNG:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  swift Tools/prepare_icon_source.swift /path/to/generated.png Sources/Verso/Resources/AppIconSource.png --remove-border-background
 ```
 
 ## Release

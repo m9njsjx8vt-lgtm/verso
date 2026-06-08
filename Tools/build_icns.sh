@@ -4,11 +4,20 @@
 
 set -euo pipefail
 
+if [[ -z "${DEVELOPER_DIR:-}" && -d /Applications/Xcode.app/Contents/Developer ]]; then
+  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
+
 SRC="${1:-/tmp/icon_1024.png}"
 DST="${2:-Sources/Translator/Resources/AppIcon.icns}"
 ICONSET="$(mktemp -d)/AppIcon.iconset"
+NORMALIZED_SRC="$(mktemp).png"
+MODULE_CACHE="$(mktemp -d)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 mkdir -p "$ICONSET"
+swift -module-cache-path "$MODULE_CACHE" "$SCRIPT_DIR/prepare_icon_source.swift" "$SRC" "$NORMALIZED_SRC"
+SRC="$NORMALIZED_SRC"
 
 # Generate all the sizes Apple expects in an iconset
 sips -z 16 16     "$SRC" --out "$ICONSET/icon_16x16.png"      >/dev/null
