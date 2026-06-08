@@ -676,19 +676,43 @@ final class LocalAIClient {
 
     private func cleanModelOutput(_ raw: String) -> String {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        while let start = text.range(of: "<think>"),
-              let end = text.range(of: "</think>", range: start.upperBound..<text.endIndex) {
-            text.removeSubrange(start.lowerBound..<end.upperBound)
-            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        for tag in ["think", "thinking", "reasoning"] {
+            text = removingTag(named: tag, from: text)
         }
-        if let openThink = text.range(of: "<think>") {
-            text.removeSubrange(openThink.lowerBound..<text.endIndex)
-            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        let prefixes = ["Translation:", "翻訳:", "訳:"]
-        for prefix in prefixes where text.hasPrefix(prefix) {
+
+        let prefixes = [
+            "Translation:",
+            "Translated text:",
+            "Here is the translation:",
+            "翻訳:",
+            "翻訳結果:",
+            "訳:"
+        ]
+        for prefix in prefixes where text.range(of: prefix, options: [.caseInsensitive])?.lowerBound == text.startIndex {
             text = String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        return text
+    }
+
+    private func removingTag(named tag: String, from raw: String) -> String {
+        var text = raw
+        let open = "<\(tag)>"
+        let close = "</\(tag)>"
+
+        while let start = text.range(of: open, options: [.caseInsensitive]) {
+            if let end = text.range(
+                of: close,
+                options: [.caseInsensitive],
+                range: start.upperBound..<text.endIndex
+            ) {
+                text.removeSubrange(start.lowerBound..<end.upperBound)
+            } else {
+                text.removeSubrange(start.lowerBound..<text.endIndex)
+            }
+            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
         return text
     }
 
