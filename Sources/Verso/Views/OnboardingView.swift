@@ -123,7 +123,7 @@ struct OnboardingView: View {
     }
 
     private var selectedProvider: TranslationProvider {
-        TranslationProvider(rawValue: providerDraft) ?? .gemini
+        TranslationProvider(rawValue: providerDraft) ?? TranslationProvider.defaultProvider
     }
 
     private var selectedLocalBackend: LocalAIBackend {
