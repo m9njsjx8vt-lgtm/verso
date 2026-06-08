@@ -7,6 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject var history: HistoryStore
     @EnvironmentObject var usage: UsageTracker
     @State private var showApiKey: Bool = false
+    @State private var isConfirmingClearUsage: Bool = false
 
     var body: some View {
         TabView {
@@ -259,7 +260,7 @@ struct SettingsView: View {
             HStack {
                 Spacer()
                 Button("Clear usage history", role: .destructive) {
-                    usage.clear()
+                    isConfirmingClearUsage = true
                 }
                 .controlSize(.small)
             }
@@ -267,6 +268,17 @@ struct SettingsView: View {
             Spacer()
         }
         .padding()
+        .confirmationDialog(
+            "Clear usage history?",
+            isPresented: $isConfirmingClearUsage
+        ) {
+            Button("Clear usage history", role: .destructive) {
+                usage.clear()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This resets local token and cost records. It does not delete translation history or API keys.")
+        }
     }
 
     private func statRow(_ label: String, calls: Int, tokens: Int, cost: Double) -> some View {

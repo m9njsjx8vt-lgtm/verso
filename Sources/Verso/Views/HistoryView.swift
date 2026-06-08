@@ -4,6 +4,8 @@ struct HistoryView: View {
     @ObservedObject var history: HistoryStore
     @State private var query: String = ""
     @State private var selectedID: HistoryEntry.ID?
+    @State private var footerMessage: String?
+    @State private var isConfirmingClearAll = false
 
     let onInsert: (String) -> Void
     let onOpenWorkspace: (HistoryEntry) -> Void
@@ -55,12 +57,15 @@ struct HistoryView: View {
                                     onInsert(entry.translation)
                                 }
                                 Button("Copy translation") {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(entry.translation, forType: .string)
+                                    copyTranslation(entry)
                                 }
                                 Divider()
                                 Button("Delete", role: .destructive) {
                                     history.remove(entry)
+                                    if selectedID == entry.id {
+                                        selectedID = nil
+                                    }
+                                    footerMessage = "Deleted"
                                 }
                             }
                     }
@@ -73,9 +78,14 @@ struct HistoryView: View {
             // Footer
             HStack {
                 Button("Clear All", role: .destructive) {
-                    history.clear()
+                    isConfirmingClearAll = true
                 }
                 .disabled(history.entries.isEmpty)
+                if let footerMessage {
+                    Text(footerMessage)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
                 Spacer()
                 if let id = selectedID, let entry = filtered.first(where: { $0.id == id }) {
                     Button {
@@ -90,8 +100,7 @@ struct HistoryView: View {
                         Label("Workspace", systemImage: "character.bubble")
                     }
                     Button("Copy") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(entry.translation, forType: .string)
+                        copyTranslation(entry)
                     }
                 }
                 Button("Close") { onClose() }
@@ -101,6 +110,19 @@ struct HistoryView: View {
             .background(Color(NSColor.controlBackgroundColor))
         }
         .frame(minWidth: 700, idealWidth: 800, minHeight: 500, idealHeight: 600)
+        .confirmationDialog(
+            "Clear all history?",
+            isPresented: $isConfirmingClearAll
+        ) {
+            Button("Clear all history", role: .destructive) {
+                history.clear()
+                selectedID = nil
+                footerMessage = "History cleared"
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes all saved translation history from this Mac.")
+        }
     }
 
     private var emptyState: some View {
@@ -120,6 +142,12 @@ struct HistoryView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func copyTranslation(_ entry: HistoryEntry) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(entry.translation, forType: .string)
+        footerMessage = "Copied \(entry.targetLang) translation"
     }
 }
 

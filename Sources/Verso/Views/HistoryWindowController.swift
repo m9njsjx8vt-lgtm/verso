@@ -5,16 +5,13 @@ import SwiftUI
 final class HistoryWindowController {
     private let history: HistoryStore
     private var window: NSWindow?
-    private weak var popupController: PopupController?
     private weak var workspaceController: WorkspaceWindowController?
 
     init(
         history: HistoryStore,
-        popupController: PopupController,
         workspaceController: WorkspaceWindowController?
     ) {
         self.history = history
-        self.popupController = popupController
         self.workspaceController = workspaceController
     }
 
@@ -66,17 +63,5 @@ final class HistoryWindowController {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(translation, forType: .string)
         close()
-
-        // Show a transient notification
-        let alert = NSAlert()
-        alert.messageText = "Copied"
-        alert.informativeText = "Past translation copied to clipboard. Press ⌘V to paste."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        // Run modally but very briefly — use async dismiss
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            NSApp.windows.first(where: { $0.title.isEmpty && $0.contentView != nil })?.close()
-        }
-        // Note: we don't synchronously runModal because it'd block; user can just see clipboard
     }
 }

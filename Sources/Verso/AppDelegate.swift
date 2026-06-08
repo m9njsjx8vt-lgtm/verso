@@ -49,7 +49,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         historyWindowController = HistoryWindowController(
             history: history,
-            popupController: popup,
             workspaceController: workspaceWindowController
         )
 
