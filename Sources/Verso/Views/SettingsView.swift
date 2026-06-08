@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var isTestingLocalAI: Bool = false
     @State private var localAITestMessage: String?
     @State private var localAITestSucceeded: Bool = false
+    @State private var localAITestRequestID = UUID()
     @State private var isLoadingLocalAIModels: Bool = false
     @State private var localAIModelListMessage: String?
     @State private var discoveredLocalAIModels: [LocalAIModelInfo] = []
@@ -48,6 +49,7 @@ struct SettingsView: View {
             refreshLocalAIModelsIfUseful()
         }
         .onChange(of: settings.translationProvider) { _ in
+            resetLocalAITestResult()
             refreshLocalAIModelsIfUseful(force: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -563,6 +565,8 @@ struct SettingsView: View {
     }
 
     private func resetLocalAITestResult() {
+        localAITestRequestID = UUID()
+        isTestingLocalAI = false
         localAITestMessage = nil
         localAITestSucceeded = false
     }
@@ -599,7 +603,9 @@ struct SettingsView: View {
         let backend = settings.selectedLocalAIBackend
         let endpoint = settings.localAIEndpoint
         let model = settings.localAIModel
+        let requestID = UUID()
 
+        localAITestRequestID = requestID
         isTestingLocalAI = true
         localAITestMessage = nil
         localAITestSucceeded = false
@@ -612,18 +618,40 @@ struct SettingsView: View {
                     model: model
                 )
                 await MainActor.run {
+                    guard localAITestRequestID == requestID else { return }
+                    guard currentLocalAITestRequestMatches(
+                        backend: backend,
+                        endpoint: endpoint,
+                        model: model
+                    ) else { return }
                     localAITestSucceeded = true
                     localAITestMessage = "接続OK: \(reply.prefix(40))"
                     isTestingLocalAI = false
                 }
             } catch {
                 await MainActor.run {
+                    guard localAITestRequestID == requestID else { return }
+                    guard currentLocalAITestRequestMatches(
+                        backend: backend,
+                        endpoint: endpoint,
+                        model: model
+                    ) else { return }
                     localAITestSucceeded = false
                     localAITestMessage = error.localizedDescription
                     isTestingLocalAI = false
                 }
             }
         }
+    }
+
+    private func currentLocalAITestRequestMatches(
+        backend: LocalAIBackend,
+        endpoint: String,
+        model: String
+    ) -> Bool {
+        currentLocalAIRequestMatches(backend: backend, endpoint: endpoint)
+            && model.trimmingCharacters(in: .whitespacesAndNewlines)
+                == settings.localAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func modelMenuTitle(_ model: LocalAIModelInfo) -> String {
