@@ -248,8 +248,9 @@ final class AppSettings: ObservableObject {
     init() {
         let d = UserDefaults.standard
         let storedApiKey = Self.migratedSecret(forKey: "geminiApiKey")
+        let storedDeepLKey = Self.migratedSecret(forKey: "deeplApiKey")
         self.apiKey = storedApiKey
-        self.deeplApiKey = Self.migratedSecret(forKey: "deeplApiKey")
+        self.deeplApiKey = storedDeepLKey
         let savedProvider = d.string(forKey: "translationProvider") ?? TranslationProvider.defaultProvider.rawValue
         self.translationProvider = TranslationProvider(rawValue: savedProvider)?.rawValue
             ?? TranslationProvider.defaultProvider.rawValue
@@ -272,7 +273,12 @@ final class AppSettings: ObservableObject {
         self.stayOpen = d.bool(forKey: "stayOpen")
         self.cacheEnabled = d.object(forKey: "cacheEnabled") as? Bool ?? true
         self.appLanguage = d.string(forKey: "appLanguage") ?? "system"
-        self.hasCompletedOnboarding = d.object(forKey: "hasCompletedOnboarding") as? Bool ?? !storedApiKey.isEmpty
+        self.hasCompletedOnboarding = d.object(forKey: "hasCompletedOnboarding") as? Bool
+            ?? Self.inferCompletedOnboarding(
+                defaults: d,
+                storedApiKey: storedApiKey,
+                storedDeepLKey: storedDeepLKey
+            )
         L10n.setLanguage(self.appLanguage)
     }
 
@@ -287,6 +293,29 @@ final class AppSettings: ObservableObject {
             KeychainService.set("", forKey: key)
         }
         return keychainValue
+    }
+
+    private static func inferCompletedOnboarding(
+        defaults: UserDefaults,
+        storedApiKey: String,
+        storedDeepLKey: String
+    ) -> Bool {
+        if !storedApiKey.isEmpty || !storedDeepLKey.isEmpty {
+            return true
+        }
+
+        let setupKeys = [
+            "translationProvider",
+            "localAIBackend",
+            "localAIEndpoint",
+            "localAIModel",
+            "model",
+            "translationStyle",
+            "targetWhenEnglish",
+            "targetWhenOther",
+            "translatorContext"
+        ]
+        return setupKeys.contains { defaults.object(forKey: $0) != nil }
     }
 
     var selectedTranslationProvider: TranslationProvider {
