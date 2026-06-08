@@ -4,9 +4,11 @@ import Foundation
 /// Stored at `~/Library/Application Support/Verso/secrets.json` with `0600` (owner-only) perms.
 enum SecretsStore {
     private static let storeURL: URL = {
-        let support = FileManager.default
+        let applicationSupport = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first!
+            .first ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+        let support = applicationSupport
             .appendingPathComponent("Verso", isDirectory: true)
         try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         return support.appendingPathComponent("secrets.json")

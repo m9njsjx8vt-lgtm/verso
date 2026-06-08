@@ -17,9 +17,11 @@ final class HistoryStore: ObservableObject {
     private let maxEntries = 1000
 
     private let storeURL: URL = {
-        let support = FileManager.default
+        let applicationSupport = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first!
+            .first ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+        let support = applicationSupport
             .appendingPathComponent("Verso", isDirectory: true)
         try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         return support.appendingPathComponent("history.json")

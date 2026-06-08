@@ -19,9 +19,11 @@ final class Glossary: ObservableObject {
     private var cachedFormattedPrompt: String?
 
     private let storeURL: URL = {
-        let support = FileManager.default
+        let applicationSupport = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first!
+            .first ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+        let support = applicationSupport
             .appendingPathComponent("Verso", isDirectory: true)
         try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         return support.appendingPathComponent("glossary.json")
