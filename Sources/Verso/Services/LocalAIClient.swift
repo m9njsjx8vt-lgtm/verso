@@ -13,16 +13,51 @@ enum LocalAIError: LocalizedError {
         case .missingModel:
             return "ローカルAIのモデル名が未設定です。Settings → General → Local AI で設定してください。"
         case .invalidEndpoint(let value):
-            return "ローカルAIの接続先URLが不正です: \(value)"
+            return "ローカルAIの接続先URLが不正です: \(value.isEmpty ? "未入力" : value)"
         case .connectionFailed(let detail):
-            return "ローカルAIに接続できません。Ollama / LM Studio が起動しているか確認してください。\(detail)"
+            return "ローカルAIに接続できません。Ollama / LM Studio が起動しているか、Endpoint が正しいか確認してください。\(Self.formatDetail(detail))"
         case .httpError(let code, let body):
-            return "ローカルAI HTTP \(code): \(String(body.prefix(200)))"
+            return Self.describeHTTPError(code: code, body: body)
         case .invalidResponse:
             return "ローカルAIから予期しない応答形式が返りました。Backend と Model 名を確認してください。"
         case .timedOut:
             return "ローカルAIの応答が遅すぎます。軽いモデルに変えるか、もう一度試してください。"
         }
+    }
+
+    private static func describeHTTPError(code: Int, body: String) -> String {
+        let detail = formatDetail(cleanHTTPBody(body))
+        switch code {
+        case 404:
+            return "ローカルAIのモデルまたはAPIパスが見つかりません。Refresh Modelsでモデル名を選び直すか、Endpointを確認してください。\(detail)"
+        case 401, 403:
+            return "ローカルAIサーバーが認証を要求しています。認証なしで使えるローカルサーバー設定にするか、Endpointを確認してください。\(detail)"
+        case 500...599:
+            return "ローカルAIサーバー側でエラーが発生しました。モデルが読み込めるか、重すぎないかを確認してください。\(detail)"
+        default:
+            return "ローカルAI HTTP \(code)。Endpoint / Backend / Model を確認してください。\(detail)"
+        }
+    }
+
+    private static func cleanHTTPBody(_ body: String) -> String {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        if let data = trimmed.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["error", "message", "detail"] {
+                if let value = json[key] as? String, !value.isEmpty {
+                    return value
+                }
+            }
+        }
+
+        return String(trimmed.prefix(200))
+    }
+
+    private static func formatDetail(_ detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "" : "（\(trimmed)）"
     }
 }
 

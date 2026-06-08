@@ -246,6 +246,7 @@ struct OnboardingView: View {
                 discoveredLocalAIModels = []
                 localAIModelListMessage = nil
                 localAITestMessage = nil
+                localAITestSucceeded = false
             }
 
             TextField(selectedLocalBackend.endpointHelp, text: $localEndpointDraft)
@@ -412,12 +413,16 @@ struct OnboardingView: View {
                 )
                 await MainActor.run {
                     discoveredLocalAIModels = models
-                    localAIModelListMessage = models.isEmpty
-                        ? "モデルが見つかりません"
-                        : "\(models.count) models found"
-                    if localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                       let first = models.first {
+                    let currentModel = localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if models.isEmpty {
+                        localAIModelListMessage = "モデルが見つかりません"
+                    } else if currentModel.isEmpty, let first = models.first {
                         localModelDraft = first.name
+                        localAIModelListMessage = "\(models.count) models found · \(first.name) を選択"
+                    } else if !models.contains(where: { $0.name == currentModel }) {
+                        localAIModelListMessage = "\(models.count) models found · 現在のモデルは一覧にありません"
+                    } else {
+                        localAIModelListMessage = "\(models.count) models found"
                     }
                     isLoadingLocalAIModels = false
                 }

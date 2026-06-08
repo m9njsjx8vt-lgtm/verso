@@ -194,6 +194,16 @@ struct SettingsView: View {
                 }
             }
             .pickerStyle(.menu)
+            .onChange(of: settings.localAIBackend) { _ in
+                if settings.localAIEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || LocalAIBackend.allCases.map(\.defaultEndpoint).contains(settings.localAIEndpoint) {
+                    settings.localAIEndpoint = settings.selectedLocalAIBackend.defaultEndpoint
+                }
+                discoveredLocalAIModels = []
+                localAIModelListMessage = nil
+                localAITestMessage = nil
+                localAITestSucceeded = false
+            }
 
             TextField(settings.selectedLocalAIBackend.endpointHelp, text: $settings.localAIEndpoint)
                 .textFieldStyle(.roundedBorder)
@@ -298,12 +308,16 @@ struct SettingsView: View {
                 )
                 await MainActor.run {
                     discoveredLocalAIModels = models
-                    localAIModelListMessage = models.isEmpty
-                        ? "モデルが見つかりません"
-                        : "\(models.count) models found"
-                    if settings.localAIModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                       let first = models.first {
+                    let currentModel = settings.localAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if models.isEmpty {
+                        localAIModelListMessage = "モデルが見つかりません"
+                    } else if currentModel.isEmpty, let first = models.first {
                         settings.localAIModel = first.name
+                        localAIModelListMessage = "\(models.count) models found · \(first.name) を選択"
+                    } else if !models.contains(where: { $0.name == currentModel }) {
+                        localAIModelListMessage = "\(models.count) models found · 現在のモデルは一覧にありません"
+                    } else {
+                        localAIModelListMessage = "\(models.count) models found"
                     }
                     isLoadingLocalAIModels = false
                 }
