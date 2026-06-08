@@ -87,6 +87,9 @@ Verso defaults to **Local AI** for offline-first personal use. It can translate 
 Sources/Verso/
 ├── TranslatorApp.swift         # @main, app entry
 ├── AppDelegate.swift           # Menu bar + lifecycle
+├── Resources/
+│   ├── AppIcon.icns            # App icon used by the app bundle
+│   └── AppIconSource.png       # AI-generated source artwork for AppIcon.icns
 ├── Models/
 │   └── Settings.swift          # AppSettings: UserDefaults + SecretsStore
 ├── Services/
@@ -106,6 +109,7 @@ Sources/Verso/
 
 Tools/
 ├── make_icon.swift             # Core Graphics icon generator
+├── prepare_icon_source.swift   # Normalizes generated PNGs for iconutil
 └── build_icns.sh               # sips/iconutil pipeline
 ```
 
