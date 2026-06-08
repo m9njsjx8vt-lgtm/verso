@@ -28,6 +28,20 @@ enum LocalAIError: LocalizedError {
 
 final class LocalAIClient {
 
+    func healthCheck(
+        backend: LocalAIBackend,
+        endpoint: String,
+        model: String
+    ) async throws -> String {
+        try await complete(
+            prompt: "Reply with exactly this word and no explanation: OK",
+            backend: backend,
+            endpoint: endpoint,
+            model: model,
+            timeout: 45
+        )
+    }
+
     func translate(
         text: String,
         from: String,

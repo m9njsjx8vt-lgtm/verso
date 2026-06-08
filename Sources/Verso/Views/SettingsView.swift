@@ -9,6 +9,9 @@ struct SettingsView: View {
     @State private var showApiKey: Bool = false
     @State private var isConfirmingClearUsage: Bool = false
     @State private var isConfirmingResetContext: Bool = false
+    @State private var isTestingLocalAI: Bool = false
+    @State private var localAITestMessage: String?
+    @State private var localAITestSucceeded: Bool = false
 
     var body: some View {
         TabView {
@@ -197,9 +200,70 @@ struct SettingsView: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
 
+            HStack(spacing: 8) {
+                Button {
+                    testLocalAIConnection()
+                } label: {
+                    Label(
+                        isTestingLocalAI ? "Checking…" : "Test Local AI",
+                        systemImage: "checkmark.circle"
+                    )
+                }
+                .disabled(isTestingLocalAI
+                    || settings.localAIEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || settings.localAIModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                if isTestingLocalAI {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                if let message = localAITestMessage {
+                    Label(
+                        message,
+                        systemImage: localAITestSucceeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundColor(localAITestSucceeded ? .green : .orange)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+                }
+            }
+
             Text("Ollama は通常 `ollama serve` 起動中の `http://localhost:11434` を使います。LM Studio は Local Server を起動して OpenAI Compatible を選びます。")
                 .font(.caption)
                 .foregroundColor(.secondary)
+        }
+    }
+
+    private func testLocalAIConnection() {
+        let backend = settings.selectedLocalAIBackend
+        let endpoint = settings.localAIEndpoint
+        let model = settings.localAIModel
+
+        isTestingLocalAI = true
+        localAITestMessage = nil
+        localAITestSucceeded = false
+
+        Task {
+            do {
+                let reply = try await LocalAIClient().healthCheck(
+                    backend: backend,
+                    endpoint: endpoint,
+                    model: model
+                )
+                await MainActor.run {
+                    localAITestSucceeded = true
+                    localAITestMessage = "接続OK: \(reply.prefix(40))"
+                    isTestingLocalAI = false
+                }
+            } catch {
+                await MainActor.run {
+                    localAITestSucceeded = false
+                    localAITestMessage = error.localizedDescription
+                    isTestingLocalAI = false
+                }
+            }
         }
     }
 
