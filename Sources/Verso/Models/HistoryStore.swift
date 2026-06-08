@@ -36,17 +36,25 @@ final class HistoryStore: ObservableObject {
         translation: String,
         sourceApp: String?
     ) {
+        let normalizedSource = normalize(sourceText)
+        let normalizedTranslation = normalize(translation)
+        guard !normalizedSource.isEmpty, !normalizedTranslation.isEmpty else { return }
+
         let entry = HistoryEntry(
             sourceLang: sourceLang,
             targetLang: targetLang,
-            sourceText: sourceText,
-            translation: translation,
+            sourceText: normalizedSource,
+            translation: normalizedTranslation,
             sourceApp: sourceApp
         )
-        entries.insert(entry, at: 0)
-        if entries.count > maxEntries {
-            entries = Array(entries.prefix(maxEntries))
+        entries.removeAll {
+            $0.sourceLang == sourceLang
+                && $0.targetLang == targetLang
+                && normalize($0.sourceText) == normalizedSource
+                && normalize($0.translation) == normalizedTranslation
         }
+        entries.insert(entry, at: 0)
+        trimToLimit()
         save()
     }
 
@@ -66,6 +74,9 @@ final class HistoryStore: ObservableObject {
         return entries.filter {
             $0.sourceText.lowercased().contains(q)
                 || $0.translation.lowercased().contains(q)
+                || $0.sourceLang.lowercased().contains(q)
+                || $0.targetLang.lowercased().contains(q)
+                || ($0.sourceApp?.lowercased().contains(q) ?? false)
         }
     }
 
@@ -74,6 +85,20 @@ final class HistoryStore: ObservableObject {
               let decoded = try? JSONDecoder().decode([HistoryEntry].self, from: data)
         else { return }
         entries = decoded
+        trimToLimit()
+        if entries.count != decoded.count {
+            save()
+        }
+    }
+
+    private func trimToLimit() {
+        if entries.count > maxEntries {
+            entries = Array(entries.prefix(maxEntries))
+        }
+    }
+
+    private func normalize(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func save() {
