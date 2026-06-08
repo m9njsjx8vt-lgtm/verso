@@ -44,8 +44,14 @@ final class PopupController {
         self.network = network
     }
 
-    func show(originalText: String, forceTarget: String? = nil) {
-        sourceApp = NSWorkspace.shared.frontmostApplication
+    func show(
+        originalText: String,
+        forceTarget: String? = nil,
+        preserveSourceApp: Bool = false
+    ) {
+        if !preserveSourceApp || sourceApp == nil {
+            sourceApp = frontmostNonVersoApplication()
+        }
 
         // If pinned & previous popup exists with prior translation, push to conversation history
         if settings.stayOpen, let prevVM = currentViewModel, case .ok(let prevTrans) = prevVM.geminiState {
@@ -106,7 +112,11 @@ final class PopupController {
             onRetry: { [weak self] in self?.retry() },
             onSaveEdit: { [weak self] edited in self?.saveEdit(edited) },
             onChangeTarget: { [weak self] newTarget in
-                self?.show(originalText: self?.activeOriginal ?? "", forceTarget: newTarget)
+                self?.show(
+                    originalText: self?.activeOriginal ?? "",
+                    forceTarget: newTarget,
+                    preserveSourceApp: true
+                )
             },
             onTogglePin: { [weak self] in
                 guard let self = self else { return }
@@ -158,6 +168,21 @@ final class PopupController {
         }
 
         startInitialTranslations(viewModel: viewModel, cacheKey: cacheKey)
+    }
+
+    private func frontmostNonVersoApplication() -> NSRunningApplication? {
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let currentBundleID = Bundle.main.bundleIdentifier
+        let frontmost = NSWorkspace.shared.frontmostApplication
+
+        guard let frontmost else { return nil }
+        if frontmost.processIdentifier == currentPID {
+            return nil
+        }
+        if let currentBundleID, frontmost.bundleIdentifier == currentBundleID {
+            return nil
+        }
+        return frontmost
     }
 
     private func startInitialTranslations(viewModel: PopupViewModel, cacheKey: String) {
