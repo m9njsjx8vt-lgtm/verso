@@ -554,13 +554,14 @@ struct SettingsView: View {
     }
 
     private func modelMenuTitle(_ model: LocalAIModelInfo) -> String {
+        let hint = model.selectionHint.map { "  ·  \($0)" } ?? ""
         guard let size = model.sizeBytes, size > 0 else {
-            return model.name
+            return model.name + hint
         }
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useGB, .useMB]
         formatter.countStyle = .file
-        return "\(model.name)  ·  \(formatter.string(fromByteCount: size))"
+        return "\(model.name)  ·  \(formatter.string(fromByteCount: size))\(hint)"
     }
 
     private func serverMenuTitle(_ discovery: LocalAIServerDiscovery) -> String {

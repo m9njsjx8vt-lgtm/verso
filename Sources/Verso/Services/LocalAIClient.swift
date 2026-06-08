@@ -67,6 +67,25 @@ struct LocalAIModelInfo: Identifiable, Equatable, Sendable {
 
     var id: String { name }
 
+    var selectionHint: String? {
+        if name == LocalAIBackend.defaultModel {
+            return "Recommended"
+        }
+        if isEmbeddingModel {
+            return "Embedding"
+        }
+        if isCodeModel {
+            return "Code model"
+        }
+        if isLikelyHeavyModel {
+            return "Heavy"
+        }
+        if isLikelyChatModel {
+            return "Chat"
+        }
+        return nil
+    }
+
     static func recommendedReplacement(
         from models: [LocalAIModelInfo],
         currentModel: String
@@ -80,11 +99,58 @@ struct LocalAIModelInfo: Identifiable, Equatable, Sendable {
             return defaultModel
         }
 
-        let nonChatHints = ["embed", "embedding", "bge-", "rerank"]
-        return models.first { model in
-            let lowercased = model.name.lowercased()
-            return !nonChatHints.contains { lowercased.contains($0) }
-        } ?? models.first
+        return models.sorted(by: recommendationSort).first
+    }
+
+    private static func recommendationSort(_ lhs: LocalAIModelInfo, _ rhs: LocalAIModelInfo) -> Bool {
+        let lhsRank = lhs.recommendationRank
+        let rhsRank = rhs.recommendationRank
+        if lhsRank != rhsRank { return lhsRank < rhsRank }
+
+        switch (lhs.sizeBytes, rhs.sizeBytes) {
+        case let (lhsSize?, rhsSize?) where lhsSize != rhsSize:
+            return lhsSize < rhsSize
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        default:
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    private var recommendationRank: Int {
+        if name == LocalAIBackend.defaultModel { return 0 }
+        if isEmbeddingModel { return 900 }
+        if isCodeModel { return 800 }
+        if isLikelyHeavyModel { return 700 }
+        if isLikelyChatModel { return 100 }
+        return 300
+    }
+
+    private var lowercasedName: String {
+        name.lowercased()
+    }
+
+    private var isEmbeddingModel: Bool {
+        ["embed", "embedding", "bge-", "rerank"].contains { lowercasedName.contains($0) }
+    }
+
+    private var isCodeModel: Bool {
+        ["coder", "code-", "-code", "codestral"].contains { lowercasedName.contains($0) }
+    }
+
+    private var isLikelyHeavyModel: Bool {
+        if let sizeBytes, sizeBytes >= 35_000_000_000 {
+            return true
+        }
+        return ["70b", "72b", "80b", "120b"].contains { lowercasedName.contains($0) }
+    }
+
+    private var isLikelyChatModel: Bool {
+        ["qwen", "llama", "mistral", "gemma", "phi", "chat", "instruct"].contains {
+            lowercasedName.contains($0)
+        }
     }
 }
 
