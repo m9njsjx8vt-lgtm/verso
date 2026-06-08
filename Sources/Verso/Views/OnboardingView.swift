@@ -15,6 +15,8 @@ struct OnboardingView: View {
     @State private var isLoadingLocalAIModels: Bool = false
     @State private var localAIModelListMessage: String?
     @State private var discoveredLocalAIModels: [LocalAIModelInfo] = []
+    @State private var localAIAppLaunchMessage: String?
+    @State private var localAIAppLaunchSucceeded: Bool = false
 
     let onComplete: () -> Void
 
@@ -247,6 +249,32 @@ struct OnboardingView: View {
                 localAIModelListMessage = nil
                 localAITestMessage = nil
                 localAITestSucceeded = false
+                localAIAppLaunchMessage = nil
+                localAIAppLaunchSucceeded = false
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    let result = LocalAIAppLauncher.openServerApp(for: selectedLocalBackend)
+                    localAIAppLaunchSucceeded = result.succeeded
+                    localAIAppLaunchMessage = result.message
+                } label: {
+                    Label(
+                        LocalAIAppLauncher.buttonTitle(for: selectedLocalBackend),
+                        systemImage: "play.circle"
+                    )
+                }
+
+                if let message = localAIAppLaunchMessage {
+                    Label(
+                        message,
+                        systemImage: localAIAppLaunchSucceeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundColor(localAIAppLaunchSucceeded ? .green : .orange)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+                }
             }
 
             TextField(selectedLocalBackend.endpointHelp, text: $localEndpointDraft)

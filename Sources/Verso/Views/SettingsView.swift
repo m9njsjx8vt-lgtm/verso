@@ -15,6 +15,8 @@ struct SettingsView: View {
     @State private var isLoadingLocalAIModels: Bool = false
     @State private var localAIModelListMessage: String?
     @State private var discoveredLocalAIModels: [LocalAIModelInfo] = []
+    @State private var localAIAppLaunchMessage: String?
+    @State private var localAIAppLaunchSucceeded: Bool = false
 
     var body: some View {
         TabView {
@@ -203,6 +205,32 @@ struct SettingsView: View {
                 localAIModelListMessage = nil
                 localAITestMessage = nil
                 localAITestSucceeded = false
+                localAIAppLaunchMessage = nil
+                localAIAppLaunchSucceeded = false
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    let result = LocalAIAppLauncher.openServerApp(for: settings.selectedLocalAIBackend)
+                    localAIAppLaunchSucceeded = result.succeeded
+                    localAIAppLaunchMessage = result.message
+                } label: {
+                    Label(
+                        LocalAIAppLauncher.buttonTitle(for: settings.selectedLocalAIBackend),
+                        systemImage: "play.circle"
+                    )
+                }
+
+                if let message = localAIAppLaunchMessage {
+                    Label(
+                        message,
+                        systemImage: localAIAppLaunchSucceeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundColor(localAIAppLaunchSucceeded ? .green : .orange)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+                }
             }
 
             TextField(settings.selectedLocalAIBackend.endpointHelp, text: $settings.localAIEndpoint)

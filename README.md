@@ -38,7 +38,7 @@ xcodegen && open Verso.xcodeproj
 1. Launch the app — a 🔤 icon appears in the menu bar
 2. In the welcome tour, choose **Gemini** or **Local AI**
 3. For Gemini, paste your API key (get one free at https://aistudio.google.com/apikey), or skip and add it later
-4. For Local AI, run Ollama or LM Studio, then use **Refresh Models** and **Test Local AI**
+4. For Local AI, use **Start Ollama** or **Open LM Studio**, then **Refresh Models** and **Test Local AI**
 5. (Optional) Add a DeepL API key for instant preview
 6. Grant **Accessibility** permission when prompted (required for ⌘C×2 detection)
 7. Later, use **Settings → General → AI Engine** to change providers or models
@@ -50,6 +50,7 @@ Verso defaults to **Local AI** for offline-first personal use, and can translate
 - Ollama default endpoint: `http://localhost:11434`
 - Default local model on Tomoro's machine: `huihui_ai/qwen3-abliterated:14b`
 - LM Studio / llama.cpp servers: choose **OpenAI Compatible** and use a `/v1` endpoint such as `http://localhost:1234/v1`
+- Settings can open LM Studio directly, or start `ollama serve` when the Ollama CLI is installed
 - Use **Refresh Models** in Settings to discover installed local models and choose one
 - Use **Test Local AI** in Settings to confirm the endpoint/model before relying on offline translation
 - DeepL preview remains cloud-only and will show as unavailable while offline
