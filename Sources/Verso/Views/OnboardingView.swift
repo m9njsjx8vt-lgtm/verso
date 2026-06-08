@@ -15,6 +15,7 @@ struct OnboardingView: View {
     @State private var isLoadingLocalAIModels: Bool = false
     @State private var localAIModelListMessage: String?
     @State private var discoveredLocalAIModels: [LocalAIModelInfo] = []
+    @State private var localAIModelRefreshID = UUID()
     @State private var localAIAppLaunchMessage: String?
     @State private var localAIAppLaunchSucceeded: Bool = false
 
@@ -83,7 +84,7 @@ struct OnboardingView: View {
             refreshLocalAIModelsIfUseful()
         }
         .onChange(of: providerDraft) { _ in
-            refreshLocalAIModelsIfUseful()
+            refreshLocalAIModelsIfUseful(force: true)
         }
     }
 
@@ -105,7 +106,6 @@ struct OnboardingView: View {
             return !localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !isTestingLocalAI
-                && !isLoadingLocalAIModels
         }
         return true
     }
@@ -255,7 +255,7 @@ struct OnboardingView: View {
                 localAITestSucceeded = false
                 localAIAppLaunchMessage = nil
                 localAIAppLaunchSucceeded = false
-                refreshLocalAIModelsIfUseful()
+                refreshLocalAIModelsIfUseful(force: true)
             }
 
             HStack(spacing: 8) {
@@ -433,7 +433,9 @@ struct OnboardingView: View {
     private func refreshLocalAIModels() {
         let backend = selectedLocalBackend
         let endpoint = localEndpointDraft
+        let requestID = UUID()
 
+        localAIModelRefreshID = requestID
         isLoadingLocalAIModels = true
         localAIModelListMessage = nil
         discoveredLocalAIModels = []
@@ -445,6 +447,16 @@ struct OnboardingView: View {
                     endpoint: endpoint
                 )
                 await MainActor.run {
+                    guard localAIModelRefreshID == requestID else { return }
+                    guard selectedProvider == .localAI,
+                          backend == selectedLocalBackend,
+                          endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+                            == localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    else {
+                        isLoadingLocalAIModels = false
+                        return
+                    }
+
                     discoveredLocalAIModels = models
                     let currentModel = localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                     if models.isEmpty {
@@ -462,6 +474,7 @@ struct OnboardingView: View {
                 }
             } catch {
                 await MainActor.run {
+                    guard localAIModelRefreshID == requestID else { return }
                     localAIModelListMessage = error.localizedDescription
                     isLoadingLocalAIModels = false
                 }
@@ -469,9 +482,9 @@ struct OnboardingView: View {
         }
     }
 
-    private func refreshLocalAIModelsIfUseful() {
+    private func refreshLocalAIModelsIfUseful(force: Bool = false) {
         guard selectedProvider == .localAI else { return }
-        guard !isLoadingLocalAIModels else { return }
+        guard force || !isLoadingLocalAIModels else { return }
         guard !localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let currentModel = localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)

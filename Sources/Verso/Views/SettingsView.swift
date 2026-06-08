@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var isLoadingLocalAIModels: Bool = false
     @State private var localAIModelListMessage: String?
     @State private var discoveredLocalAIModels: [LocalAIModelInfo] = []
+    @State private var localAIModelRefreshID = UUID()
     @State private var localAIAppLaunchMessage: String?
     @State private var localAIAppLaunchSucceeded: Bool = false
 
@@ -44,7 +45,7 @@ struct SettingsView: View {
             refreshLocalAIModelsIfUseful()
         }
         .onChange(of: settings.translationProvider) { _ in
-            refreshLocalAIModelsIfUseful()
+            refreshLocalAIModelsIfUseful(force: true)
         }
     }
 
@@ -213,7 +214,7 @@ struct SettingsView: View {
                 localAITestSucceeded = false
                 localAIAppLaunchMessage = nil
                 localAIAppLaunchSucceeded = false
-                refreshLocalAIModelsIfUseful()
+                refreshLocalAIModelsIfUseful(force: true)
             }
 
             HStack(spacing: 8) {
@@ -330,7 +331,9 @@ struct SettingsView: View {
     private func refreshLocalAIModels() {
         let backend = settings.selectedLocalAIBackend
         let endpoint = settings.localAIEndpoint
+        let requestID = UUID()
 
+        localAIModelRefreshID = requestID
         isLoadingLocalAIModels = true
         localAIModelListMessage = nil
         discoveredLocalAIModels = []
@@ -342,6 +345,16 @@ struct SettingsView: View {
                     endpoint: endpoint
                 )
                 await MainActor.run {
+                    guard localAIModelRefreshID == requestID else { return }
+                    guard settings.usesLocalAI,
+                          backend == settings.selectedLocalAIBackend,
+                          endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+                            == settings.localAIEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+                    else {
+                        isLoadingLocalAIModels = false
+                        return
+                    }
+
                     discoveredLocalAIModels = models
                     let currentModel = settings.localAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
                     if models.isEmpty {
@@ -359,6 +372,7 @@ struct SettingsView: View {
                 }
             } catch {
                 await MainActor.run {
+                    guard localAIModelRefreshID == requestID else { return }
                     localAIModelListMessage = error.localizedDescription
                     isLoadingLocalAIModels = false
                 }
@@ -366,9 +380,9 @@ struct SettingsView: View {
         }
     }
 
-    private func refreshLocalAIModelsIfUseful() {
+    private func refreshLocalAIModelsIfUseful(force: Bool = false) {
         guard settings.usesLocalAI else { return }
-        guard !isLoadingLocalAIModels else { return }
+        guard force || !isLoadingLocalAIModels else { return }
         guard !settings.localAIEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let currentModel = settings.localAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
