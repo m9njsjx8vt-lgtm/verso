@@ -144,11 +144,17 @@ final class AppSettings: ObservableObject {
     // MARK: - API keys
 
     @Published var apiKey: String {
-        didSet { SecretsStore.set(apiKey, forKey: "geminiApiKey") }
+        didSet {
+            SecretsStore.set(apiKey, forKey: "geminiApiKey")
+            KeychainService.set("", forKey: "geminiApiKey")
+        }
     }
 
     @Published var deeplApiKey: String {
-        didSet { SecretsStore.set(deeplApiKey, forKey: "deeplApiKey") }
+        didSet {
+            SecretsStore.set(deeplApiKey, forKey: "deeplApiKey")
+            KeychainService.set("", forKey: "deeplApiKey")
+        }
     }
 
     // MARK: - AI engine
@@ -277,7 +283,9 @@ final class AppSettings: ObservableObject {
         guard let keychainValue = KeychainService.get(forKey: key), !keychainValue.isEmpty else {
             return ""
         }
-        _ = SecretsStore.set(keychainValue, forKey: key)
+        if SecretsStore.set(keychainValue, forKey: key) {
+            KeychainService.set("", forKey: key)
+        }
         return keychainValue
     }
 
