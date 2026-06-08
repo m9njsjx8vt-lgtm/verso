@@ -26,6 +26,8 @@ final class PopupViewModel: ObservableObject {
     @Published var canStartLocalAIServer: Bool
     @Published var localAIStartButtonTitle: String
     @Published var showsAIResult: Bool
+    @Published var writingSummaries: [WritingMistakeSummary]
+    @Published var writingObservationCount: Int
 
     // --- Grammar chat state ---
     @Published var chatMessages: [ChatMessage] = []
@@ -66,6 +68,8 @@ final class PopupViewModel: ObservableObject {
         localAIStartButtonTitle: String,
         showAIResult: Bool,
         showDeepLResult: Bool,
+        writingSummaries: [WritingMistakeSummary],
+        writingObservationCount: Int,
         onInsert: @escaping (String) -> Void,
         onCopy: @escaping (String) -> Void,
         onClose: @escaping () -> Void,
@@ -98,6 +102,8 @@ final class PopupViewModel: ObservableObject {
         self.canStartLocalAIServer = canStartLocalAIServer
         self.localAIStartButtonTitle = localAIStartButtonTitle
         self.showsAIResult = showAIResult
+        self.writingSummaries = writingSummaries
+        self.writingObservationCount = writingObservationCount
         self.onInsert = onInsert
         self.onCopy = onCopy
         self.onClose = onClose
@@ -158,6 +164,11 @@ final class PopupViewModel: ObservableObject {
     func updateAITranslation(_ text: String) {
         geminiState = .ok(text)
     }
+
+    func updateWritingInsights(summaries: [WritingMistakeSummary], observationCount: Int) {
+        writingSummaries = summaries
+        writingObservationCount = observationCount
+    }
 }
 
 struct PopupView: View {
@@ -172,23 +183,22 @@ struct PopupView: View {
         ZStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 8) {
                 header
-                originalPanel
-                if viewModel.showDeepLPanel {
-                    providerPanel(title: "DeepL", icon: "bolt.fill", color: .blue,
-                                  state: viewModel.deepLState, isCompact: true, editable: false)
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        originalPanel
+                        primaryResultPanel
+                        if viewModel.showAIPanel && viewModel.isGeminiOk && !viewModel.isEditing { refineBar }
+                        if viewModel.showAIPanel && viewModel.isChatExpanded && viewModel.isGeminiOk { chatPanel }
+                        actionBar
+                    }
+                    .frame(minWidth: 500, maxWidth: .infinity, alignment: .topLeading)
+
+                    Divider()
+                        .frame(maxHeight: .infinity)
+
+                    writingLensPanel
+                        .frame(width: 240, alignment: .top)
                 }
-                if viewModel.showAIPanel {
-                    providerPanel(
-                        title: viewModel.isRefining
-                            ? "\(viewModel.aiProviderTitle)  •  WORKING…"
-                            : viewModel.aiProviderTitle,
-                        icon: viewModel.aiProviderIcon,
-                        color: viewModel.aiProviderTitle == "Local AI" ? .green : .purple,
-                        state: viewModel.geminiState, isCompact: false, editable: true)
-                }
-                if viewModel.showAIPanel && viewModel.isGeminiOk && !viewModel.isEditing { refineBar }
-                if viewModel.showAIPanel && viewModel.isChatExpanded && viewModel.isGeminiOk { chatPanel }
-                actionBar
             }
             .padding(16)
 
@@ -202,19 +212,19 @@ struct PopupView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.toast)
         .animation(.easeInOut(duration: 0.2), value: viewModel.isChatExpanded)
-        .frame(minWidth: 500, idealWidth: 720, maxWidth: .infinity,
-               minHeight: 380,
-               idealHeight: viewModel.isChatExpanded ? 760 : idealPopupHeight,
+        .frame(minWidth: 760, idealWidth: 920, maxWidth: .infinity,
+               minHeight: 420,
+               idealHeight: viewModel.isChatExpanded ? 780 : idealPopupHeight,
                maxHeight: .infinity)
         .background(keyboardShortcuts)
     }
 
     private var idealPopupHeight: CGFloat {
         switch (viewModel.showDeepLPanel, viewModel.showAIPanel) {
-        case (true, true): return 580
-        case (true, false): return 420
-        case (false, true): return 480
-        case (false, false): return 380
+        case (true, true): return 590
+        case (true, false): return 480
+        case (false, true): return 540
+        case (false, false): return 420
         }
     }
 
@@ -303,6 +313,38 @@ struct PopupView: View {
 
     // MARK: - Provider panel
 
+    private var primaryResultPanel: some View {
+        providerPanel(
+            title: primaryResultTitle,
+            icon: primaryResultIcon,
+            color: primaryResultColor,
+            state: primaryResultState,
+            isCompact: false,
+            editable: viewModel.showAIPanel
+        )
+    }
+
+    private var primaryResultTitle: String {
+        let provider = viewModel.showAIPanel ? viewModel.aiProviderTitle : "DeepL"
+        if viewModel.isRefining {
+            return "Best Result  •  \(provider)  •  Working"
+        }
+        return "Best Result  •  \(provider)"
+    }
+
+    private var primaryResultIcon: String {
+        viewModel.showAIPanel ? viewModel.aiProviderIcon : "bolt.fill"
+    }
+
+    private var primaryResultColor: Color {
+        guard viewModel.showAIPanel else { return .blue }
+        return viewModel.aiProviderTitle == "Local AI" ? .green : .purple
+    }
+
+    private var primaryResultState: PopupViewModel.ProviderState {
+        viewModel.showAIPanel ? viewModel.geminiState : viewModel.deepLState
+    }
+
     @ViewBuilder
     private func providerPanel(
         title: String, icon: String, color: Color,
@@ -389,6 +431,197 @@ struct PopupView: View {
             .background(Color(NSColor.controlBackgroundColor)).cornerRadius(10)
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(color.opacity(0.4), lineWidth: 1.5))
         }
+    }
+
+    // MARK: - Writing Lens
+
+    private var writingLensPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundColor(.green)
+                Text("WRITING LENS")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .tracking(0.8)
+                    .foregroundColor(.green)
+                Spacer()
+            }
+
+            writingActionCard
+            writingStatsCard
+
+            if viewModel.showAIPanel && viewModel.showDeepLPanel {
+                deepLPreviewCard
+            }
+
+            engineStatusCard
+        }
+    }
+
+    private var writingActionCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("自分の英文")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Button {
+                viewModel.onCorrectOwnWriting()
+            } label: {
+                Label("添削して記録", systemImage: "text.badge.checkmark")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(!viewModel.showAIPanel || !viewModel.canCorrectOwnWriting || viewModel.isRefining)
+            .help("自分が書いた英文だけを直して、ミス傾向に追加します")
+
+            Text(writingActionHint)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.green.opacity(0.35), lineWidth: 1))
+    }
+
+    private var writingActionHint: String {
+        if !viewModel.showAIPanel {
+            return "AI結果を表示している時に使えます。"
+        }
+        if !viewModel.canCorrectOwnWriting {
+            return "英文を選択した時だけ記録します。"
+        }
+        if viewModel.privacyMode {
+            return "Privacy mode 中は記録しません。"
+        }
+        return "よくあるミスを自動で蓄積します。"
+    }
+
+    private var writingStatsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                statPill(title: "記録", value: "\(viewModel.writingObservationCount)")
+                statPill(title: "傾向", value: "\(viewModel.writingSummaries.count)")
+            }
+
+            if viewModel.writingSummaries.isEmpty {
+                Text("まだ傾向はありません。添削を使うとここに出ます。")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(viewModel.writingSummaries.prefix(3)) { summary in
+                        writingSummaryRow(summary)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(NSColor.separatorColor), lineWidth: 1))
+    }
+
+    private func statPill(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.headline)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.windowBackgroundColor))
+        .cornerRadius(8)
+    }
+
+    private func writingSummaryRow(_ summary: WritingMistakeSummary) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Text(summary.title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(summary.count)回")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            Text("\(summary.sampleBefore) → \(summary.sampleAfter)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+                .textSelection(.enabled)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var deepLPreviewCard: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 5) {
+                Image(systemName: "bolt.fill")
+                    .foregroundColor(.blue)
+                Text("DEEPL PREVIEW")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .tracking(0.7)
+                    .foregroundColor(.blue)
+                Spacer()
+            }
+
+            switch viewModel.deepLState {
+            case .notConfigured:
+                EmptyView()
+            case .loading:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text("previewing…")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            case .ok(let text):
+                Text(text)
+                    .font(.caption)
+                    .lineLimit(5)
+                    .textSelection(.enabled)
+            case .failed(let message):
+                Text(message)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(4)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(10)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.blue.opacity(0.25), lineWidth: 1))
+    }
+
+    private var engineStatusCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(viewModel.aiProviderTitle, systemImage: viewModel.aiProviderIcon)
+                .font(.caption)
+                .foregroundColor(viewModel.aiProviderTitle == "Local AI" ? .green : .purple)
+            Label(viewModel.privacyMode ? "履歴保存なし" : "履歴保存あり", systemImage: viewModel.privacyMode ? "lock.fill" : "clock.arrow.circlepath")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            if !viewModel.showDeepLPanel {
+                Label("DeepL非表示", systemImage: "eye.slash")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(10)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(NSColor.separatorColor), lineWidth: 1))
     }
 
     private var editor: some View {

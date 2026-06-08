@@ -5,15 +5,15 @@ final class PopupWindow: NSPanel {
     private let onResignKey: () -> Void
     private static let sizeKey = "PopupWindow.lastSize"
 
-    init(rootView: PopupView, onResignKey: @escaping () -> Void, preferredHeight: CGFloat = 460) {
+    init(rootView: PopupView, onResignKey: @escaping () -> Void, preferredHeight: CGFloat = 560) {
         self.onResignKey = onResignKey
 
         // Restore last user-resized size if available, else use defaults
-        let defaultSize = NSSize(width: 720, height: preferredHeight)
+        let defaultSize = NSSize(width: 920, height: preferredHeight)
         let restoredSize: NSSize
         if let dict = UserDefaults.standard.dictionary(forKey: Self.sizeKey),
            let w = dict["w"] as? CGFloat, let h = dict["h"] as? CGFloat,
-           w >= 500, h >= 380 {
+           w >= 760, h >= 420 {
             restoredSize = NSSize(width: w, height: h)
         } else {
             restoredSize = defaultSize
@@ -27,7 +27,7 @@ final class PopupWindow: NSPanel {
             backing: .buffered,
             defer: false
         )
-        contentMinSize = NSSize(width: 500, height: 380)
+        contentMinSize = NSSize(width: 760, height: 420)
         self.title = "翻訳"
         self.level = .floating
         self.isFloatingPanel = true

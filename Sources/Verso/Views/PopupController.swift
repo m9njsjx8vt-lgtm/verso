@@ -105,6 +105,8 @@ final class PopupController {
             localAIStartButtonTitle: LocalAIAppLauncher.buttonTitle(for: settings.selectedLocalAIBackend),
             showAIResult: showAIResult,
             showDeepLResult: showDeepLResult,
+            writingSummaries: writingMistakes.summaries(),
+            writingObservationCount: writingMistakes.entries.count,
             onInsert: { [weak self] t in self?.insertAndClose(t) },
             onCopy: { [weak self] t in
                 NSPasteboard.general.clearContents()
@@ -560,6 +562,7 @@ final class PopupController {
                         issues: result.result.mistakes,
                         sourceApp: self.sourceApp?.localizedName
                     )
+                    self.refreshWritingInsights(vm)
                     vm.showToast("添削しました · ミス傾向\(count)件を記録", duration: 3.0)
                 }
             } catch {
@@ -574,6 +577,14 @@ final class PopupController {
                 vm.showToast("添削失敗: \(error.localizedDescription)", duration: 4.0)
             }
         }
+    }
+
+    private func refreshWritingInsights(_ viewModel: PopupViewModel? = nil) {
+        let target = viewModel ?? currentViewModel
+        target?.updateWritingInsights(
+            summaries: writingMistakes.summaries(),
+            observationCount: writingMistakes.entries.count
+        )
     }
 
     private func undoLastRefine() {
