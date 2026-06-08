@@ -315,16 +315,16 @@ final class LocalAIClient {
             sourceAppHint: sourceAppHint,
             preserveMarkdownAndCode: preserveMarkdownAndCode
         )
-        let output = try await completeStreaming(
+        let output = try await complete(
             prompt: prompt,
             systemPrompt: Self.translationSystemPrompt(targetLanguage: to),
             backend: backend,
             endpoint: endpoint,
             model: model,
             timeout: timeoutForTextLength(text.count),
-            preserveCodeFences: preserveMarkdownAndCode,
-            onChunk: onChunk
+            preserveCodeFences: preserveMarkdownAndCode
         )
+        await onChunk(output)
         return (output, nil)
     }
 
