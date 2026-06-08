@@ -12,6 +12,9 @@ struct SettingsView: View {
     @State private var isTestingLocalAI: Bool = false
     @State private var localAITestMessage: String?
     @State private var localAITestSucceeded: Bool = false
+    @State private var isLoadingLocalAIModels: Bool = false
+    @State private var localAIModelListMessage: String?
+    @State private var discoveredLocalAIModels: [LocalAIModelInfo] = []
 
     var body: some View {
         TabView {
@@ -202,6 +205,49 @@ struct SettingsView: View {
 
             HStack(spacing: 8) {
                 Button {
+                    refreshLocalAIModels()
+                } label: {
+                    Label(
+                        isLoadingLocalAIModels ? "Loading…" : "Refresh Models",
+                        systemImage: "arrow.clockwise"
+                    )
+                }
+                .disabled(isLoadingLocalAIModels
+                    || settings.localAIEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                if isLoadingLocalAIModels {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                if !discoveredLocalAIModels.isEmpty {
+                    Menu {
+                        ForEach(discoveredLocalAIModels) { model in
+                            Button {
+                                settings.localAIModel = model.name
+                            } label: {
+                                if model.name == settings.localAIModel {
+                                    Label(modelMenuTitle(model), systemImage: "checkmark")
+                                } else {
+                                    Text(modelMenuTitle(model))
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Choose Model", systemImage: "list.bullet")
+                    }
+                }
+
+                if let message = localAIModelListMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button {
                     testLocalAIConnection()
                 } label: {
                     Label(
@@ -236,6 +282,40 @@ struct SettingsView: View {
         }
     }
 
+    private func refreshLocalAIModels() {
+        let backend = settings.selectedLocalAIBackend
+        let endpoint = settings.localAIEndpoint
+
+        isLoadingLocalAIModels = true
+        localAIModelListMessage = nil
+        discoveredLocalAIModels = []
+
+        Task {
+            do {
+                let models = try await LocalAIClient().listModels(
+                    backend: backend,
+                    endpoint: endpoint
+                )
+                await MainActor.run {
+                    discoveredLocalAIModels = models
+                    localAIModelListMessage = models.isEmpty
+                        ? "モデルが見つかりません"
+                        : "\(models.count) models found"
+                    if settings.localAIModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       let first = models.first {
+                        settings.localAIModel = first.name
+                    }
+                    isLoadingLocalAIModels = false
+                }
+            } catch {
+                await MainActor.run {
+                    localAIModelListMessage = error.localizedDescription
+                    isLoadingLocalAIModels = false
+                }
+            }
+        }
+    }
+
     private func testLocalAIConnection() {
         let backend = settings.selectedLocalAIBackend
         let endpoint = settings.localAIEndpoint
@@ -265,6 +345,16 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func modelMenuTitle(_ model: LocalAIModelInfo) -> String {
+        guard let size = model.sizeBytes, size > 0 else {
+            return model.name
+        }
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB]
+        formatter.countStyle = .file
+        return "\(model.name)  ·  \(formatter.string(fromByteCount: size))"
     }
 
     // MARK: - Languages

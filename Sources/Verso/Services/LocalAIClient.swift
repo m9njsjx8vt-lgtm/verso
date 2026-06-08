@@ -26,7 +26,49 @@ enum LocalAIError: LocalizedError {
     }
 }
 
+struct LocalAIModelInfo: Identifiable, Equatable {
+    let name: String
+    let sizeBytes: Int64?
+
+    var id: String { name }
+}
+
 final class LocalAIClient {
+
+    func listModels(
+        backend: LocalAIBackend,
+        endpoint: String
+    ) async throws -> [LocalAIModelInfo] {
+        let url = try modelsURL(for: backend, rawEndpoint: endpoint)
+        var request = URLRequest(url: url, timeoutInterval: 15)
+        request.httpMethod = "GET"
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw LocalAIError.timedOut
+        } catch let urlError as URLError {
+            throw LocalAIError.connectionFailed(urlError.localizedDescription)
+        } catch {
+            throw LocalAIError.connectionFailed(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw LocalAIError.invalidResponse
+        }
+        guard http.statusCode == 200 else {
+            throw LocalAIError.httpError(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+        }
+
+        switch backend {
+        case .ollama:
+            return try parseOllamaModels(data)
+        case .openAICompatible:
+            return try parseOpenAICompatibleModels(data)
+        }
+    }
 
     func healthCheck(
         backend: LocalAIBackend,
@@ -305,11 +347,7 @@ final class LocalAIClient {
     }
 
     private func endpointURL(for backend: LocalAIBackend, rawEndpoint: String) throws -> URL {
-        let trimmed = rawEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let base = URL(string: trimmed), base.scheme != nil, base.host != nil else {
-            throw LocalAIError.invalidEndpoint(rawEndpoint)
-        }
-
+        let base = try baseURL(rawEndpoint)
         let lowerPath = base.path.lowercased()
         if lowerPath.hasSuffix("/api/chat") || lowerPath.hasSuffix("/chat/completions") {
             return base
@@ -321,6 +359,70 @@ final class LocalAIClient {
         case .openAICompatible:
             return base.appendingPathComponent("chat").appendingPathComponent("completions")
         }
+    }
+
+    private func modelsURL(for backend: LocalAIBackend, rawEndpoint: String) throws -> URL {
+        let base = try baseURL(rawEndpoint)
+        let lowerPath = base.path.lowercased()
+
+        switch backend {
+        case .ollama:
+            if lowerPath.hasSuffix("/api/tags") {
+                return base
+            }
+            if lowerPath.hasSuffix("/api/chat") {
+                return base.deletingLastPathComponent().appendingPathComponent("tags")
+            }
+            return base.appendingPathComponent("api").appendingPathComponent("tags")
+        case .openAICompatible:
+            if lowerPath.hasSuffix("/models") {
+                return base
+            }
+            if lowerPath.hasSuffix("/chat/completions") {
+                return base
+                    .deletingLastPathComponent()
+                    .deletingLastPathComponent()
+                    .appendingPathComponent("models")
+            }
+            return base.appendingPathComponent("models")
+        }
+    }
+
+    private func baseURL(_ rawEndpoint: String) throws -> URL {
+        let trimmed = rawEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let base = URL(string: trimmed), base.scheme != nil, base.host != nil else {
+            throw LocalAIError.invalidEndpoint(rawEndpoint)
+        }
+        return base
+    }
+
+    private func parseOllamaModels(_ data: Data) throws -> [LocalAIModelInfo] {
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let models = json["models"] as? [[String: Any]]
+        else {
+            throw LocalAIError.invalidResponse
+        }
+        return models.compactMap { model in
+            guard let name = model["name"] as? String, !name.isEmpty else { return nil }
+            let size = (model["size"] as? NSNumber)?.int64Value
+            return LocalAIModelInfo(name: name, sizeBytes: size)
+        }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private func parseOpenAICompatibleModels(_ data: Data) throws -> [LocalAIModelInfo] {
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let models = json["data"] as? [[String: Any]]
+        else {
+            throw LocalAIError.invalidResponse
+        }
+        return models.compactMap { model in
+            guard let id = model["id"] as? String, !id.isEmpty else { return nil }
+            return LocalAIModelInfo(name: id, sizeBytes: nil)
+        }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private func parseOllamaResponse(_ data: Data) throws -> String {

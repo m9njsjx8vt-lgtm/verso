@@ -50,6 +50,7 @@ Verso can translate without internet access when **AI Engine** is set to **Local
 - Ollama default endpoint: `http://localhost:11434`
 - Default local model on Tomoro's machine: `huihui_ai/qwen3-abliterated:14b`
 - LM Studio / llama.cpp servers: choose **OpenAI Compatible** and use a `/v1` endpoint such as `http://localhost:1234/v1`
+- Use **Refresh Models** in Settings to discover installed local models and choose one
 - Use **Test Local AI** in Settings to confirm the endpoint/model before relying on offline translation
 - DeepL preview remains cloud-only and will show as unavailable while offline
 
