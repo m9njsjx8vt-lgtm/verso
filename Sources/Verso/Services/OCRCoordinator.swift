@@ -52,7 +52,7 @@ final class OCRCoordinator {
         Task { @MainActor in
             do {
                 let text = try await OCRService.recognizeText(in: cgImage)
-                self.popupController?.show(originalText: text)
+                self.showRecognizedText(text)
             } catch {
                 self.showError(error.localizedDescription)
             }
@@ -97,11 +97,20 @@ final class OCRCoordinator {
         Task { @MainActor in
             do {
                 let text = try await OCRService.recognizeText(in: cgImage)
-                self.popupController?.show(originalText: text)
+                self.showRecognizedText(text)
             } catch {
                 self.showError(error.localizedDescription)
             }
         }
+    }
+
+    private func showRecognizedText(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            showError("テキストを検出できませんでした。範囲を少し広げるか、文字がはっきり見える場所を選んでください。")
+            return
+        }
+        popupController?.show(originalText: trimmed)
     }
 
     private func showError(_ message: String) {
