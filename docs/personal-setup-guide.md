@@ -37,13 +37,13 @@ Gemini is optional. Use it when internet access is available and cloud translati
 
 DeepL is optional. Leave it blank unless instant cloud preview is useful.
 
-### Step 3: Accessibility Permission
+### Step 3: Permissions
 
-Required for global shortcuts.
+Accessibility is required for global shortcuts. Screen Recording is required for OCR region/window translation.
 
 1. Open macOS **System Settings**.
-2. Go to **Privacy & Security → Accessibility**.
-3. Enable **Verso**.
+2. Go to **Privacy & Security → Accessibility** and enable **Verso**.
+3. Go to **Privacy & Security → Screen Recording** and enable **Verso**.
 4. Quit and relaunch Verso.
 
 ## 3. Shortcuts
@@ -86,6 +86,13 @@ Use **Settings → Glossary** for terms that should always translate the same wa
 1. Menu bar icon → **Check Accessibility Permission**.
 2. Re-enable Verso in macOS Accessibility settings.
 3. Relaunch Verso.
+
+### OCR does not work
+
+1. Menu bar icon → **Settings → General → Permissions**.
+2. Confirm **Accessibility OK** and **Screen Recording OK**.
+3. Re-enable Verso in macOS Privacy & Security settings if needed.
+4. Relaunch Verso.
 
 ### Local AI cannot connect
 

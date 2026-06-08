@@ -255,6 +255,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if !AccessibilityService.isTrusted() {
                         _ = AccessibilityService.checkAndPromptIfNeeded()
                     }
+                    if !ScreenCapturePermissionService.isTrusted() {
+                        _ = ScreenCapturePermissionService.requestIfNeeded()
+                    }
                 }
             )
         }

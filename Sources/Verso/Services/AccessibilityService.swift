@@ -15,3 +15,17 @@ enum AccessibilityService {
         return AXIsProcessTrusted()
     }
 }
+
+enum ScreenCapturePermissionService {
+    @discardableResult
+    static func requestIfNeeded() -> Bool {
+        if CGPreflightScreenCaptureAccess() {
+            return true
+        }
+        return CGRequestScreenCaptureAccess()
+    }
+
+    static func isTrusted() -> Bool {
+        CGPreflightScreenCaptureAccess()
+    }
+}

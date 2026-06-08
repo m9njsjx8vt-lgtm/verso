@@ -150,16 +150,32 @@ struct SettingsView: View {
 
                 Group {
                     Text(L10n.sectionPermissions).font(.headline)
-                    HStack {
-                        Image(systemName: AccessibilityService.isTrusted()
-                            ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                            .foregroundColor(AccessibilityService.isTrusted() ? .green : .orange)
-                        Text(AccessibilityService.isTrusted()
-                            ? "Accessibility OK" : "Accessibility 未許可 — ホットキー効きません")
-                        Spacer()
-                        if !AccessibilityService.isTrusted() {
-                            Button("Open Settings") {
-                                _ = AccessibilityService.checkAndPromptIfNeeded()
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: AccessibilityService.isTrusted()
+                                ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                                .foregroundColor(AccessibilityService.isTrusted() ? .green : .orange)
+                            Text(AccessibilityService.isTrusted()
+                                ? "Accessibility OK" : "Accessibility 未許可 — ホットキー効きません")
+                            Spacer()
+                            if !AccessibilityService.isTrusted() {
+                                Button("Open Settings") {
+                                    _ = AccessibilityService.checkAndPromptIfNeeded()
+                                }
+                            }
+                        }
+
+                        HStack {
+                            Image(systemName: ScreenCapturePermissionService.isTrusted()
+                                ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                                .foregroundColor(ScreenCapturePermissionService.isTrusted() ? .green : .orange)
+                            Text(ScreenCapturePermissionService.isTrusted()
+                                ? "Screen Recording OK" : "Screen Recording 未許可 — OCR翻訳に必要")
+                            Spacer()
+                            if !ScreenCapturePermissionService.isTrusted() {
+                                Button("Request") {
+                                    _ = ScreenCapturePermissionService.requestIfNeeded()
+                                }
                             }
                         }
                     }

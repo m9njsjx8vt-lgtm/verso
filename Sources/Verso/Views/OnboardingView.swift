@@ -440,17 +440,18 @@ struct OnboardingView: View {
 
     private var accessibilityStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Accessibility 権限", systemImage: "lock.shield.fill")
+            Label("権限設定", systemImage: "lock.shield.fill")
                 .font(.title2)
                 .bold()
-            Text("⌘C×2 と ⌥⇧C を**どこからでも検出**するために、macOS の Accessibility 権限が必要です。")
+            Text("⌘C×2などのホットキーには Accessibility、画面OCR翻訳には Screen Recording 権限が必要です。")
                 .font(.body)
                 .foregroundColor(.secondary)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("1.  「完了」ボタンを押すと権限プロンプトが表示されます")
-                Text("2.  「システム設定を開く」→ Verso をリストに追加 → トグルON")
-                Text("3.  Verso をいったん終了して再起動")
+                Text("1.  「完了」ボタンを押すと必要な権限プロンプトが表示されます")
+                Text("2.  System Settings → Privacy & Security で Verso を許可")
+                Text("3.  Accessibility と Screen Recording をON")
+                Text("4.  Verso をいったん終了して再起動")
             }
             .font(.callout)
             .padding(12)
@@ -460,7 +461,7 @@ struct OnboardingView: View {
             HStack(spacing: 6) {
                 Image(systemName: "info.circle")
                     .foregroundColor(.accentColor)
-                Text("Verso はキーストロークを保存・送信しません。⌘C×2 と ⌥⇧C の組み合わせを検出するためだけに使います。")
+                Text("Verso はキーストロークやOCR画像を保存・送信しません。画面キャプチャはOCR処理後すぐ破棄されます。")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
