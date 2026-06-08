@@ -418,7 +418,7 @@ final class GeminiClient {
 
     // MARK: - Prompt builders
 
-    private static func buildTranslatePrompt(
+    static func buildTranslatePrompt(
         text: String, from: String, to: String,
         context: String?, glossary: String?, sourceAppHint: String?,
         preserveMarkdownAndCode: Bool
@@ -442,7 +442,7 @@ final class GeminiClient {
         """
     }
 
-    private static func buildRefinePrompt(
+    static func buildRefinePrompt(
         originalText: String, currentTranslation: String, instruction: String,
         from: String, to: String,
         context: String?, glossary: String?,

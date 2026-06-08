@@ -80,6 +80,7 @@ final class WorkspaceViewModel: ObservableObject {
     private let cache: TranslationCache
     private let network: NetworkMonitor
     private let geminiClient = GeminiClient()
+    private let localAIClient = LocalAIClient()
     private var translateTask: Task<Void, Never>?
 
     init(
@@ -125,7 +126,7 @@ final class WorkspaceViewModel: ObservableObject {
         errorText = nil
         resultText = ""
 
-        guard network.isOnline else {
+        guard settings.usesLocalAI || network.isOnline else {
             errorText = GeminiError.offline.localizedDescription
             statusText = ""
             return
@@ -148,7 +149,7 @@ final class WorkspaceViewModel: ObservableObject {
             target: pair.targetShort,
             glossary: glossaryPrompt,
             context: context,
-            model: settings.model,
+            model: settings.activeModelKey,
             preserveMarkdownAndCode: settings.preserveMarkdownAndCode
         )
 
@@ -156,43 +157,66 @@ final class WorkspaceViewModel: ObservableObject {
            let cached = cache.get(cacheKey)?.geminiTranslation,
            !cached.isEmpty {
             resultText = cached
-            statusText = "Cache · \(sourceTargetSummary)"
+            statusText = "Cache · \(settings.primaryProviderTitle) · \(sourceTargetSummary)"
             recordHistory(sourceText: text, translation: cached, pair: pair)
             return
         }
 
         isTranslating = true
-        statusText = "Translating · \(sourceTargetSummary)"
+        statusText = "Translating · \(settings.primaryProviderTitle) · \(sourceTargetSummary)"
 
         translateTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.isTranslating = false }
             do {
-                let result = try await self.geminiClient.translateStreaming(
-                    text: text,
-                    from: pair.sourceFull,
-                    to: pair.targetFull,
-                    context: context,
-                    glossary: glossaryPrompt,
-                    sourceAppHint: "Verso Workspace",
-                    preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode,
-                    model: self.settings.model,
-                    apiKey: self.settings.apiKey,
-                    onChunk: { [weak self] partial in
-                        await MainActor.run {
-                            guard let self, !Task.isCancelled else { return }
-                            self.resultText = partial
-                            self.statusText = "Translating · \(self.sourceTargetSummary)"
+                let result: (text: String, usage: GeminiUsage?)
+                if self.settings.usesLocalAI {
+                    result = try await self.localAIClient.translateStreaming(
+                        text: text,
+                        from: pair.sourceFull,
+                        to: pair.targetFull,
+                        context: context,
+                        glossary: glossaryPrompt,
+                        sourceAppHint: "Verso Workspace",
+                        preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode,
+                        backend: self.settings.selectedLocalAIBackend,
+                        endpoint: self.settings.localAIEndpoint,
+                        model: self.settings.localAIModel,
+                        onChunk: { [weak self] partial in
+                            await MainActor.run {
+                                guard let self, !Task.isCancelled else { return }
+                                self.resultText = partial
+                                self.statusText = "Translating · \(self.settings.primaryProviderTitle) · \(self.sourceTargetSummary)"
+                            }
                         }
-                    }
-                )
+                    )
+                } else {
+                    result = try await self.geminiClient.translateStreaming(
+                        text: text,
+                        from: pair.sourceFull,
+                        to: pair.targetFull,
+                        context: context,
+                        glossary: glossaryPrompt,
+                        sourceAppHint: "Verso Workspace",
+                        preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode,
+                        model: self.settings.model,
+                        apiKey: self.settings.apiKey,
+                        onChunk: { [weak self] partial in
+                            await MainActor.run {
+                                guard let self, !Task.isCancelled else { return }
+                                self.resultText = partial
+                                self.statusText = "Translating · \(self.settings.primaryProviderTitle) · \(self.sourceTargetSummary)"
+                            }
+                        }
+                    )
+                }
                 if Task.isCancelled { return }
 
                 self.resultText = result.text
-                self.statusText = "Done · \(self.sourceTargetSummary)"
+                self.statusText = "Done · \(self.settings.primaryProviderTitle) · \(self.sourceTargetSummary)"
                 if let u = result.usage {
                     self.usage.record(
-                        model: self.settings.model,
+                        model: self.settings.activeModelKey,
                         promptTokens: u.promptTokens,
                         responseTokens: u.responseTokens
                     )

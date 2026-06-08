@@ -40,29 +40,23 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Group {
-                    Text("Gemini API Key").font(.headline)
-                    Text("Get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).")
-                        .font(.caption).foregroundColor(.secondary)
-                    HStack {
-                        Group {
-                            if showApiKey { TextField("AIza…", text: $settings.apiKey) }
-                            else { SecureField("AIza…", text: $settings.apiKey) }
+                    Text("AI Engine").font(.headline)
+                    Picker("", selection: $settings.translationProvider) {
+                        ForEach(TranslationProvider.allCases) { provider in
+                            Text(provider.title).tag(provider.rawValue)
                         }
-                        .textFieldStyle(.roundedBorder)
-                        Button(showApiKey ? "Hide" : "Show") { showApiKey.toggle() }
                     }
-                }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    Text(settings.selectedTranslationProvider.subtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
 
-                Divider()
-
-                Group {
-                    Text("Model").font(.headline)
-                    Picker("", selection: $settings.model) {
-                        Text("Gemini 2.5 Flash-Lite — free, fast (1000 RPD)").tag("gemini-2.5-flash-lite")
-                        Text("Gemini 2.5 Flash — better quality (250 RPD free)").tag("gemini-2.5-flash")
-                        Text("Gemini 2.5 Pro — best, paid tier recommended").tag("gemini-2.5-pro")
+                    if settings.usesLocalAI {
+                        localAISettings
+                    } else {
+                        geminiSettings
                     }
-                    .pickerStyle(.menu).labelsHidden()
                 }
 
                 Divider()
@@ -158,6 +152,54 @@ struct SettingsView: View {
                 Spacer()
             }
             .padding()
+        }
+    }
+
+    private var geminiSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Gemini API Key").font(.subheadline).fontWeight(.semibold)
+            Text("Get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).")
+                .font(.caption).foregroundColor(.secondary)
+            HStack {
+                Group {
+                    if showApiKey { TextField("AIza…", text: $settings.apiKey) }
+                    else { SecureField("AIza…", text: $settings.apiKey) }
+                }
+                .textFieldStyle(.roundedBorder)
+                Button(showApiKey ? "Hide" : "Show") { showApiKey.toggle() }
+            }
+
+            Text("Model").font(.subheadline).fontWeight(.semibold)
+            Picker("", selection: $settings.model) {
+                Text("Gemini 2.5 Flash-Lite — free, fast (1000 RPD)").tag("gemini-2.5-flash-lite")
+                Text("Gemini 2.5 Flash — better quality (250 RPD free)").tag("gemini-2.5-flash")
+                Text("Gemini 2.5 Pro — best, paid tier recommended").tag("gemini-2.5-pro")
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+        }
+    }
+
+    private var localAISettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Backend", selection: $settings.localAIBackend) {
+                ForEach(LocalAIBackend.allCases) { backend in
+                    Text(backend.title).tag(backend.rawValue)
+                }
+            }
+            .pickerStyle(.menu)
+
+            TextField(settings.selectedLocalAIBackend.endpointHelp, text: $settings.localAIEndpoint)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+
+            TextField("Model name, e.g. huihui_ai/qwen3-abliterated:14b", text: $settings.localAIModel)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+
+            Text("Ollama は通常 `ollama serve` 起動中の `http://localhost:11434` を使います。LM Studio は Local Server を起動して OpenAI Compatible を選びます。")
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
     }
 

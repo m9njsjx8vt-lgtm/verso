@@ -1,9 +1,9 @@
 # Verso
 
-Personal AI translation, on every page. Select text → ⌘C twice → DeepL-style popup translates it via Gemini.
+Personal AI translation, on every page. Select text → ⌘C twice → DeepL-style popup translates it via Gemini or a local AI model.
 
 Built to replace [Nani](https://nani.now) and DeepL with:
-- **No usage caps** — uses your own Gemini API key (free tier ≈ 1000 RPD on Flash-Lite)
+- **Cloud or offline translation** — use Gemini, or switch to local Ollama / OpenAI-compatible servers
 - **Personal context injection** — teach Verso your tone, glossary, and proper nouns
 - **Auto-dismissing popup** that disappears the moment you click anywhere else (DeepL behavior)
 - **Workspace mode** — keep a regular translation window open for longer text and edits
@@ -37,9 +37,20 @@ xcodegen && open Verso.xcodeproj
 
 1. Launch the app — a 🔤 icon appears in the menu bar
 2. Click the icon → **Settings…**
-3. Paste your Gemini API key (get one free at https://aistudio.google.com/apikey)
-4. (Optional) Customize the Personalization tab to teach Verso your tone and glossary
-5. Grant **Accessibility** permission when prompted (required for ⌘C×2 detection)
+3. In **Settings → General → AI Engine**, choose Gemini or Local AI
+4. For Gemini, paste your API key (get one free at https://aistudio.google.com/apikey)
+5. For Local AI, run Ollama or LM Studio and set the endpoint/model name
+6. (Optional) Customize the Personalization tab to teach Verso your tone and glossary
+7. Grant **Accessibility** permission when prompted (required for ⌘C×2 detection)
+
+## Local AI / offline mode
+
+Verso can translate without internet access when **AI Engine** is set to **Local AI**.
+
+- Ollama default endpoint: `http://localhost:11434`
+- Default local model on Tomoro's machine: `huihui_ai/qwen3-abliterated:14b`
+- LM Studio / llama.cpp servers: choose **OpenAI Compatible** and use a `/v1` endpoint such as `http://localhost:1234/v1`
+- DeepL preview remains cloud-only and will show as unavailable while offline
 
 ## Use
 
@@ -73,6 +84,7 @@ Sources/Verso/
 │   ├── AccessibilityService.swift
 │   ├── HotkeyMonitor.swift     # ⌘C×2 detection (NSEvent global monitor)
 │   ├── GeminiClient.swift      # Gemini API wrapper (URLSession + async/await)
+│   ├── LocalAIClient.swift     # Ollama / OpenAI-compatible local AI wrapper
 │   └── PasteService.swift      # Sends ⌘V via CGEvent
 └── Views/
     ├── PopupController.swift   # Manages popup lifecycle

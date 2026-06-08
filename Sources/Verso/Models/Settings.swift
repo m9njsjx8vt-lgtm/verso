@@ -75,6 +75,66 @@ enum TranslationStyle: String, CaseIterable, Identifiable {
     }
 }
 
+enum TranslationProvider: String, CaseIterable, Identifiable {
+    case gemini
+    case localAI
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .gemini: return "Gemini"
+        case .localAI: return "Local AI"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .gemini:
+            return "クラウドのGeminiで高速・高品質に翻訳"
+        case .localAI:
+            return "Ollama / LM Studio など手元のAIで、ネットなしでも翻訳"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .gemini: return "sparkles"
+        case .localAI: return "desktopcomputer"
+        }
+    }
+}
+
+enum LocalAIBackend: String, CaseIterable, Identifiable {
+    case ollama
+    case openAICompatible
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .ollama: return "Ollama"
+        case .openAICompatible: return "OpenAI Compatible"
+        }
+    }
+
+    var defaultEndpoint: String {
+        switch self {
+        case .ollama: return "http://localhost:11434"
+        case .openAICompatible: return "http://localhost:1234/v1"
+        }
+    }
+
+    var endpointHelp: String {
+        switch self {
+        case .ollama:
+            return "例: http://localhost:11434"
+        case .openAICompatible:
+            return "例: http://localhost:1234/v1 または http://localhost:8080/v1"
+        }
+    }
+}
+
 @MainActor
 final class AppSettings: ObservableObject {
     // MARK: - API keys
@@ -85,6 +145,30 @@ final class AppSettings: ObservableObject {
 
     @Published var deeplApiKey: String {
         didSet { SecretsStore.set(deeplApiKey, forKey: "deeplApiKey") }
+    }
+
+    // MARK: - AI engine
+
+    @Published var translationProvider: String {
+        didSet { UserDefaults.standard.set(translationProvider, forKey: "translationProvider") }
+    }
+
+    @Published var localAIBackend: String {
+        didSet {
+            UserDefaults.standard.set(localAIBackend, forKey: "localAIBackend")
+            let backend = selectedLocalAIBackend
+            if localAIEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                localAIEndpoint = backend.defaultEndpoint
+            }
+        }
+    }
+
+    @Published var localAIEndpoint: String {
+        didSet { UserDefaults.standard.set(localAIEndpoint, forKey: "localAIEndpoint") }
+    }
+
+    @Published var localAIModel: String {
+        didSet { UserDefaults.standard.set(localAIModel, forKey: "localAIModel") }
     }
 
     // MARK: - Translator behavior
@@ -147,10 +231,24 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    @Published var hasCompletedOnboarding: Bool {
+        didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
+    }
+
     init() {
         let d = UserDefaults.standard
-        self.apiKey = SecretsStore.get("geminiApiKey") ?? ""
+        let storedApiKey = SecretsStore.get("geminiApiKey") ?? ""
+        self.apiKey = storedApiKey
         self.deeplApiKey = SecretsStore.get("deeplApiKey") ?? ""
+        let savedProvider = d.string(forKey: "translationProvider") ?? TranslationProvider.gemini.rawValue
+        self.translationProvider = TranslationProvider(rawValue: savedProvider)?.rawValue
+            ?? TranslationProvider.gemini.rawValue
+        let savedBackend = d.string(forKey: "localAIBackend") ?? LocalAIBackend.ollama.rawValue
+        let resolvedBackend = LocalAIBackend(rawValue: savedBackend) ?? .ollama
+        self.localAIBackend = resolvedBackend.rawValue
+        let backend = resolvedBackend
+        self.localAIEndpoint = d.string(forKey: "localAIEndpoint") ?? backend.defaultEndpoint
+        self.localAIModel = d.string(forKey: "localAIModel") ?? "huihui_ai/qwen3-abliterated:14b"
         self.translatorContext = d.string(forKey: "translatorContext") ?? Self.defaultContext
         self.model = d.string(forKey: "model") ?? "gemini-2.5-flash-lite"
         let savedStyle = d.string(forKey: "translationStyle") ?? TranslationStyle.directBusiness.rawValue
@@ -164,7 +262,40 @@ final class AppSettings: ObservableObject {
         self.stayOpen = d.bool(forKey: "stayOpen")
         self.cacheEnabled = d.object(forKey: "cacheEnabled") as? Bool ?? true
         self.appLanguage = d.string(forKey: "appLanguage") ?? "system"
+        self.hasCompletedOnboarding = d.object(forKey: "hasCompletedOnboarding") as? Bool ?? !storedApiKey.isEmpty
         L10n.setLanguage(self.appLanguage)
+    }
+
+    var selectedTranslationProvider: TranslationProvider {
+        TranslationProvider(rawValue: translationProvider) ?? .gemini
+    }
+
+    var selectedLocalAIBackend: LocalAIBackend {
+        LocalAIBackend(rawValue: localAIBackend) ?? .ollama
+    }
+
+    var usesLocalAI: Bool {
+        selectedTranslationProvider == .localAI
+    }
+
+    var primaryProviderTitle: String {
+        selectedTranslationProvider.title
+    }
+
+    var primaryProviderIcon: String {
+        selectedTranslationProvider.icon
+    }
+
+    var activeModelKey: String {
+        if usesLocalAI {
+            return [
+                "local",
+                selectedLocalAIBackend.rawValue,
+                localAIEndpoint.trimmingCharacters(in: .whitespacesAndNewlines),
+                localAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            ].joined(separator: ":")
+        }
+        return model
     }
 
     var selectedTranslationStyle: TranslationStyle {

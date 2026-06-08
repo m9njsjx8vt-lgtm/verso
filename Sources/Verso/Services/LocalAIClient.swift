@@ -1,0 +1,353 @@
+import Foundation
+
+enum LocalAIError: LocalizedError {
+    case missingModel
+    case invalidEndpoint(String)
+    case connectionFailed(String)
+    case httpError(Int, String)
+    case invalidResponse
+    case timedOut
+
+    var errorDescription: String? {
+        switch self {
+        case .missingModel:
+            return "ローカルAIのモデル名が未設定です。Settings → General → Local AI で設定してください。"
+        case .invalidEndpoint(let value):
+            return "ローカルAIの接続先URLが不正です: \(value)"
+        case .connectionFailed(let detail):
+            return "ローカルAIに接続できません。Ollama / LM Studio が起動しているか確認してください。\(detail)"
+        case .httpError(let code, let body):
+            return "ローカルAI HTTP \(code): \(String(body.prefix(200)))"
+        case .invalidResponse:
+            return "ローカルAIから予期しない応答形式が返りました。Backend と Model 名を確認してください。"
+        case .timedOut:
+            return "ローカルAIの応答が遅すぎます。軽いモデルに変えるか、もう一度試してください。"
+        }
+    }
+}
+
+final class LocalAIClient {
+
+    func translate(
+        text: String,
+        from: String,
+        to: String,
+        context: String?,
+        glossary: String?,
+        sourceAppHint: String?,
+        preserveMarkdownAndCode: Bool,
+        backend: LocalAIBackend,
+        endpoint: String,
+        model: String
+    ) async throws -> (text: String, usage: GeminiUsage?) {
+        let prompt = GeminiClient.buildTranslatePrompt(
+            text: text,
+            from: from,
+            to: to,
+            context: context,
+            glossary: glossary,
+            sourceAppHint: sourceAppHint,
+            preserveMarkdownAndCode: preserveMarkdownAndCode
+        )
+        let timeout = timeoutForTextLength(text.count)
+        let output = try await complete(
+            prompt: prompt,
+            backend: backend,
+            endpoint: endpoint,
+            model: model,
+            timeout: timeout
+        )
+        return (output, nil)
+    }
+
+    func translateStreaming(
+        text: String,
+        from: String,
+        to: String,
+        context: String?,
+        glossary: String?,
+        sourceAppHint: String?,
+        preserveMarkdownAndCode: Bool,
+        backend: LocalAIBackend,
+        endpoint: String,
+        model: String,
+        onChunk: @escaping (String) async -> Void
+    ) async throws -> (text: String, usage: GeminiUsage?) {
+        let result = try await translate(
+            text: text,
+            from: from,
+            to: to,
+            context: context,
+            glossary: glossary,
+            sourceAppHint: sourceAppHint,
+            preserveMarkdownAndCode: preserveMarkdownAndCode,
+            backend: backend,
+            endpoint: endpoint,
+            model: model
+        )
+        await onChunk(result.text)
+        return result
+    }
+
+    func refine(
+        originalText: String,
+        currentTranslation: String,
+        instruction: String,
+        from: String,
+        to: String,
+        context: String?,
+        glossary: String?,
+        preserveMarkdownAndCode: Bool,
+        backend: LocalAIBackend,
+        endpoint: String,
+        model: String
+    ) async throws -> (text: String, usage: GeminiUsage?) {
+        let prompt = GeminiClient.buildRefinePrompt(
+            originalText: originalText,
+            currentTranslation: currentTranslation,
+            instruction: instruction,
+            from: from,
+            to: to,
+            context: context,
+            glossary: glossary,
+            preserveMarkdownAndCode: preserveMarkdownAndCode
+        )
+        let timeout = timeoutForTextLength(originalText.count + currentTranslation.count)
+        let output = try await complete(
+            prompt: prompt,
+            backend: backend,
+            endpoint: endpoint,
+            model: model,
+            timeout: timeout
+        )
+        return (output, nil)
+    }
+
+    func chatAboutTranslation(
+        originalText: String,
+        translation: String,
+        sourceLang: String,
+        targetLang: String,
+        priorMessages: [ChatMessage],
+        newQuestion: String,
+        backend: LocalAIBackend,
+        endpoint: String,
+        model: String
+    ) async throws -> (text: String, usage: GeminiUsage?) {
+        var historyBlock = ""
+        if !priorMessages.isEmpty {
+            historyBlock = "\n## CONVERSATION SO FAR\n" + priorMessages.map { msg in
+                "\(msg.role == .user ? "User" : "Assistant"): \(msg.content)"
+            }.joined(separator: "\n\n") + "\n"
+        }
+        let prompt = """
+        You are a translation tutor. The user is studying or refining a translation between languages and asking follow-up questions.
+
+        ## ORIGINAL (\(sourceLang))
+        \(originalText)
+
+        ## TRANSLATION (\(targetLang))
+        \(translation)
+        \(historyBlock)
+        ## CURRENT QUESTION
+        \(newQuestion)
+
+        Respond in the user's question language. Keep the answer focused and concise. Use clear examples when explaining nuance.
+        """
+        let timeout = timeoutForTextLength(originalText.count + translation.count + newQuestion.count)
+        let output = try await complete(
+            prompt: prompt,
+            backend: backend,
+            endpoint: endpoint,
+            model: model,
+            timeout: timeout
+        )
+        return (output, nil)
+    }
+
+    func extractGlossaryDiff(
+        originalText: String,
+        modelTranslation: String,
+        userTranslation: String,
+        from: String,
+        to: String,
+        backend: LocalAIBackend,
+        endpoint: String,
+        model: String
+    ) async throws -> [(term: String, translation: String)] {
+        let prompt = """
+        You are analysing a translation correction.
+
+        ORIGINAL (\(from)):
+        \(originalText)
+
+        MODEL TRANSLATION (\(to)):
+        \(modelTranslation)
+
+        USER-EDITED TRANSLATION (\(to)):
+        \(userTranslation)
+
+        Identify any term-level corrections the user made. Output a JSON array of {"term":"<source-language term>","translation":"<preferred target translation>"} pairs.
+        Only include reusable glossary entries. If none, return [].
+        Output ONLY the JSON array. No code fence, no explanation.
+        """
+        let output = try await complete(
+            prompt: prompt,
+            backend: backend,
+            endpoint: endpoint,
+            model: model,
+            timeout: timeoutForTextLength(originalText.count + userTranslation.count * 2)
+        )
+        var trimmed = output
+        if trimmed.hasPrefix("```") {
+            if let firstNewline = trimmed.firstIndex(of: "\n") {
+                trimmed = String(trimmed[trimmed.index(after: firstNewline)...])
+            }
+            if trimmed.hasSuffix("```") {
+                trimmed = String(trimmed.dropLast(3))
+            }
+            trimmed = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard let data = trimmed.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: String]]
+        else { return [] }
+        return array.compactMap { dict in
+            guard let term = dict["term"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  let translation = dict["translation"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !term.isEmpty,
+                  !translation.isEmpty
+            else { return nil }
+            return (term, translation)
+        }
+    }
+
+    private func complete(
+        prompt: String,
+        backend: LocalAIBackend,
+        endpoint: String,
+        model: String,
+        timeout: TimeInterval
+    ) async throws -> String {
+        let modelName = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !modelName.isEmpty else { throw LocalAIError.missingModel }
+
+        let url = try endpointURL(for: backend, rawEndpoint: endpoint)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        switch backend {
+        case .ollama:
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "model": modelName,
+                "messages": [["role": "user", "content": prompt]],
+                "stream": false,
+                "options": ["temperature": 0.2]
+            ])
+        case .openAICompatible:
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "model": modelName,
+                "messages": [
+                    [
+                        "role": "system",
+                        "content": "You are Verso, a private local translation assistant. Follow the user prompt exactly."
+                    ],
+                    ["role": "user", "content": prompt]
+                ],
+                "temperature": 0.2,
+                "stream": false
+            ])
+        }
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw LocalAIError.timedOut
+        } catch let urlError as URLError {
+            throw LocalAIError.connectionFailed(urlError.localizedDescription)
+        } catch {
+            throw LocalAIError.connectionFailed(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw LocalAIError.invalidResponse
+        }
+        guard http.statusCode == 200 else {
+            throw LocalAIError.httpError(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+        }
+
+        let raw: String
+        switch backend {
+        case .ollama:
+            raw = try parseOllamaResponse(data)
+        case .openAICompatible:
+            raw = try parseOpenAICompatibleResponse(data)
+        }
+        let cleaned = cleanModelOutput(raw)
+        guard !cleaned.isEmpty else { throw LocalAIError.invalidResponse }
+        return cleaned
+    }
+
+    private func endpointURL(for backend: LocalAIBackend, rawEndpoint: String) throws -> URL {
+        let trimmed = rawEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let base = URL(string: trimmed), base.scheme != nil, base.host != nil else {
+            throw LocalAIError.invalidEndpoint(rawEndpoint)
+        }
+
+        let lowerPath = base.path.lowercased()
+        if lowerPath.hasSuffix("/api/chat") || lowerPath.hasSuffix("/chat/completions") {
+            return base
+        }
+
+        switch backend {
+        case .ollama:
+            return base.appendingPathComponent("api").appendingPathComponent("chat")
+        case .openAICompatible:
+            return base.appendingPathComponent("chat").appendingPathComponent("completions")
+        }
+    }
+
+    private func parseOllamaResponse(_ data: Data) throws -> String {
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let message = json["message"] as? [String: Any],
+            let content = message["content"] as? String
+        else {
+            throw LocalAIError.invalidResponse
+        }
+        return content
+    }
+
+    private func parseOpenAICompatibleResponse(_ data: Data) throws -> String {
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let choices = json["choices"] as? [[String: Any]],
+            let first = choices.first,
+            let message = first["message"] as? [String: Any],
+            let content = message["content"] as? String
+        else {
+            throw LocalAIError.invalidResponse
+        }
+        return content
+    }
+
+    private func cleanModelOutput(_ raw: String) -> String {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let start = text.range(of: "<think>"),
+              let end = text.range(of: "</think>", range: start.upperBound..<text.endIndex) {
+            text.removeSubrange(start.lowerBound..<end.upperBound)
+            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let prefixes = ["Translation:", "翻訳:", "訳:"]
+        for prefix in prefixes where text.hasPrefix(prefix) {
+            text = String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return text
+    }
+
+    private func timeoutForTextLength(_ count: Int) -> TimeInterval {
+        min(180.0, max(20.0, 20.0 + Double(count) / 120.0))
+    }
+}

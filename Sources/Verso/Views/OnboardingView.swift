@@ -69,6 +69,9 @@ struct OnboardingView: View {
 
     private var primaryButtonTitle: String {
         if step == totalSteps - 1 { return "完了" }
+        if step == 1 && apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "スキップして次へ"
+        }
         if step == 2 && deepLDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "スキップして次へ"
         }
@@ -76,9 +79,6 @@ struct OnboardingView: View {
     }
 
     private var canAdvance: Bool {
-        if step == 1 {
-            return !apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
         return true
     }
 
@@ -87,6 +87,7 @@ struct OnboardingView: View {
         if step == 1 { settings.apiKey = apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines) }
         if step == 2 { settings.deeplApiKey = deepLDraft.trimmingCharacters(in: .whitespacesAndNewlines) }
         if step == totalSteps - 1 {
+            settings.hasCompletedOnboarding = true
             onComplete()
         } else {
             step += 1
@@ -110,7 +111,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 8) {
                 FeatureRow(icon: "sparkles",
                            title: "AI翻訳 + 即時プレビュー",
-                           subtitle: "Gemini は必須、DeepL プレビューは任意")
+                           subtitle: "Gemini または Local AI を選択。DeepL プレビューは任意")
                 FeatureRow(icon: "book.closed.fill",
                            title: "用語を学習",
                            subtitle: "Glossary に登録した固有名詞は毎回正しく訳される")
@@ -127,10 +128,10 @@ struct OnboardingView: View {
 
     private var geminiStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Gemini APIキー（必須）", systemImage: "key.fill")
+            Label("Gemini APIキー（任意）", systemImage: "key.fill")
                 .font(.title2)
                 .bold()
-            Text("Versoは無料のGemini APIで翻訳します。1分でキーを発行できます:")
+            Text("クラウド翻訳を使う場合は Gemini APIキーを登録します。ローカルAIだけで使う場合は空欄のまま進めます。")
                 .font(.body)
                 .foregroundColor(.secondary)
 
@@ -158,7 +159,7 @@ struct OnboardingView: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
 
-            Text("無料枠: Gemini 2.5 Flash-Lite で 1日約1000回。普段使いには余裕。")
+            Text("あとで Settings → General → AI Engine から Gemini / Local AI を切り替えられます。")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
@@ -169,10 +170,10 @@ struct OnboardingView: View {
             Label("DeepL APIキー（任意）", systemImage: "bolt.fill")
                 .font(.title2)
                 .bold()
-            Text("登録すると ⌘C×2 した瞬間に DeepL の即時プレビューが表示され、その後 Gemini が追いついて精緻版に置き換わります。")
+            Text("登録すると ⌘C×2 した瞬間に DeepL の即時プレビューが表示され、その後メインAIの精緻版に置き換わります。")
                 .font(.body)
                 .foregroundColor(.secondary)
-            Text("DeepLなしでもGeminiだけで翻訳できます。空欄のままスキップして問題ありません。")
+            Text("DeepLなしでも翻訳できます。空欄のままスキップして問題ありません。")
                 .font(.callout)
                 .foregroundColor(.secondary)
 
@@ -189,7 +190,7 @@ struct OnboardingView: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
 
-            Text("無料枠: 月50万文字。スキップしても Gemini だけで動きます。")
+            Text("無料枠: 月50万文字。ローカルAI利用時もDeepLはネット接続がある時だけ動きます。")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }

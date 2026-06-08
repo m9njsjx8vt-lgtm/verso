@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.rebuildStatusBarMenu() }
         }
 
-        if settings.apiKey.isEmpty {
+        if !settings.hasCompletedOnboarding {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.showOnboarding()
             }

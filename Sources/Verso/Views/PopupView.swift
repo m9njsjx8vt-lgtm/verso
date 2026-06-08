@@ -20,6 +20,9 @@ final class PopupViewModel: ObservableObject {
     @Published var stayOpen: Bool
     @Published var privacyMode: Bool
     @Published var conversationDepth: Int
+    let aiProviderTitle: String
+    let aiProviderIcon: String
+    let allowsCloudPro: Bool
 
     // --- Grammar chat state ---
     @Published var chatMessages: [ChatMessage] = []
@@ -50,6 +53,9 @@ final class PopupViewModel: ObservableObject {
         originalText: String, fromLang: String, toLang: String,
         deepLConfigured: Bool, stayOpen: Bool, privacyMode: Bool,
         conversationDepth: Int,
+        aiProviderTitle: String,
+        aiProviderIcon: String,
+        allowsCloudPro: Bool,
         onInsert: @escaping (String) -> Void,
         onCopy: @escaping (String) -> Void,
         onClose: @escaping () -> Void,
@@ -73,6 +79,9 @@ final class PopupViewModel: ObservableObject {
         self.stayOpen = stayOpen
         self.privacyMode = privacyMode
         self.conversationDepth = conversationDepth
+        self.aiProviderTitle = aiProviderTitle
+        self.aiProviderIcon = aiProviderIcon
+        self.allowsCloudPro = allowsCloudPro
         self.onInsert = onInsert
         self.onCopy = onCopy
         self.onClose = onClose
@@ -142,8 +151,11 @@ struct PopupView: View {
                                   state: viewModel.deepLState, isCompact: true, editable: false)
                 }
                 providerPanel(
-                    title: viewModel.isRefining ? "Gemini  •  WORKING…" : "Gemini",
-                    icon: "sparkles", color: .purple,
+                    title: viewModel.isRefining
+                        ? "\(viewModel.aiProviderTitle)  •  WORKING…"
+                        : viewModel.aiProviderTitle,
+                    icon: viewModel.aiProviderIcon,
+                    color: viewModel.aiProviderTitle == "Local AI" ? .green : .purple,
                     state: viewModel.geminiState, isCompact: false, editable: true)
                 if viewModel.isGeminiOk && !viewModel.isEditing { refineBar }
                 if viewModel.isChatExpanded && viewModel.isGeminiOk { chatPanel }
@@ -347,8 +359,10 @@ struct PopupView: View {
                 label: { Label("丁寧", systemImage: "person.crop.circle.badge.checkmark") }.help("⌘3 — formal")
             Button { viewModel.onRefine("Provide an alternative translation with different word choices.") }
                 label: { Label("別案", systemImage: "arrow.triangle.2.circlepath") }.help("⌘4 — alternative")
-            Button { viewModel.onTryWithPro() }
-                label: { Label("Pro", systemImage: "star.fill") }.help("Try with Gemini 2.5 Pro")
+            if viewModel.allowsCloudPro {
+                Button { viewModel.onTryWithPro() }
+                    label: { Label("Pro", systemImage: "star.fill") }.help("Try with Gemini 2.5 Pro")
+            }
             if viewModel.toLang == "JA" {
                 Button { viewModel.onFurigana() }
                     label: { Label("ふりがな", systemImage: "character.book.closed.fill") }.help("漢字に読み仮名を付ける")
@@ -536,7 +550,7 @@ struct PopupView: View {
     }
 
     private var insertLabel: String {
-        if case .ok = viewModel.geminiState { return "挿入 (Gemini)" }
+        if case .ok = viewModel.geminiState { return "挿入 (\(viewModel.aiProviderTitle))" }
         if case .ok = viewModel.deepLState { return "挿入 (DeepL)" }
         return "挿入"
     }
