@@ -443,6 +443,13 @@ final class GeminiClient {
         return """
         You are a personal translator for a specific user. Use the user context, glossary, and source-app hint below to produce a translation that sounds like *that user* wrote it.
         \(ctxBlock)\(gloBlock)\(appBlock)\(preserveBlock)
+        ## LANGUAGE CONTRACT
+        - Source language: \(from)
+        - Target language: \(to)
+        - Output language: \(to) only.
+        - Do not answer in the source language or in a third language.
+        - Do not explain how you translated the text.
+
         ## TASK
         Translate the following \(from) text into natural, fluent \(to). \
         Match the user's tone, terminology, and proper-noun conventions. \

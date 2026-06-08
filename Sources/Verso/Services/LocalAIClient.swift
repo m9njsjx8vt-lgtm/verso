@@ -251,6 +251,7 @@ final class LocalAIClient {
     ) async throws -> String {
         try await complete(
             prompt: "Reply with exactly this word and no explanation: OK",
+            systemPrompt: Self.conciseSystemPrompt,
             backend: backend,
             endpoint: endpoint,
             model: model,
@@ -282,6 +283,7 @@ final class LocalAIClient {
         let timeout = timeoutForTextLength(text.count)
         let output = try await complete(
             prompt: prompt,
+            systemPrompt: Self.translationSystemPrompt(targetLanguage: to),
             backend: backend,
             endpoint: endpoint,
             model: model,
@@ -315,6 +317,7 @@ final class LocalAIClient {
         )
         let output = try await completeStreaming(
             prompt: prompt,
+            systemPrompt: Self.translationSystemPrompt(targetLanguage: to),
             backend: backend,
             endpoint: endpoint,
             model: model,
@@ -351,6 +354,7 @@ final class LocalAIClient {
         let timeout = timeoutForTextLength(originalText.count + currentTranslation.count)
         let output = try await complete(
             prompt: prompt,
+            systemPrompt: Self.translationSystemPrompt(targetLanguage: to),
             backend: backend,
             endpoint: endpoint,
             model: model,
@@ -394,6 +398,7 @@ final class LocalAIClient {
         let timeout = timeoutForTextLength(originalText.count + translation.count + newQuestion.count)
         let output = try await complete(
             prompt: prompt,
+            systemPrompt: Self.tutorSystemPrompt,
             backend: backend,
             endpoint: endpoint,
             model: model,
@@ -430,6 +435,7 @@ final class LocalAIClient {
         """
         let output = try await complete(
             prompt: prompt,
+            systemPrompt: Self.jsonOnlySystemPrompt,
             backend: backend,
             endpoint: endpoint,
             model: model,
@@ -460,6 +466,7 @@ final class LocalAIClient {
 
     private func complete(
         prompt: String,
+        systemPrompt: String,
         backend: LocalAIBackend,
         endpoint: String,
         model: String,
@@ -471,6 +478,7 @@ final class LocalAIClient {
 
         let request = try completionRequest(
             prompt: prompt,
+            systemPrompt: systemPrompt,
             backend: backend,
             endpoint: endpoint,
             modelName: modelName,
@@ -511,6 +519,7 @@ final class LocalAIClient {
 
     private func completeStreaming(
         prompt: String,
+        systemPrompt: String,
         backend: LocalAIBackend,
         endpoint: String,
         model: String,
@@ -523,6 +532,7 @@ final class LocalAIClient {
 
         let request = try completionRequest(
             prompt: prompt,
+            systemPrompt: systemPrompt,
             backend: backend,
             endpoint: endpoint,
             modelName: modelName,
@@ -584,6 +594,7 @@ final class LocalAIClient {
 
     private func completionRequest(
         prompt: String,
+        systemPrompt: String,
         backend: LocalAIBackend,
         endpoint: String,
         modelName: String,
@@ -599,26 +610,27 @@ final class LocalAIClient {
         case .ollama:
             request.httpBody = try JSONSerialization.data(withJSONObject: [
                 "model": modelName,
-                "messages": [["role": "user", "content": prompt]],
+                "messages": chatMessages(systemPrompt: systemPrompt, prompt: prompt),
                 "stream": streaming,
-                "options": ["temperature": 0.2]
+                "options": ["temperature": 0.1]
             ])
         case .openAICompatible:
             request.httpBody = try JSONSerialization.data(withJSONObject: [
                 "model": modelName,
-                "messages": [
-                    [
-                        "role": "system",
-                        "content": "You are Verso, a private local translation assistant. Follow the user prompt exactly."
-                    ],
-                    ["role": "user", "content": prompt]
-                ],
-                "temperature": 0.2,
+                "messages": chatMessages(systemPrompt: systemPrompt, prompt: prompt),
+                "temperature": 0.1,
                 "stream": streaming
             ])
         }
 
         return request
+    }
+
+    private func chatMessages(systemPrompt: String, prompt: String) -> [[String: String]] {
+        [
+            ["role": "system", "content": systemPrompt],
+            ["role": "user", "content": prompt]
+        ]
     }
 
     private func readOllamaStream(
@@ -816,6 +828,7 @@ final class LocalAIClient {
 
         for tag in ["think", "thinking", "reasoning"] {
             text = removingTag(named: tag, from: text)
+            text = removingOrphanedClosingTagPrefix(named: tag, from: text)
             text = text.replacingOccurrences(of: "</\(tag)>", with: "", options: [.caseInsensitive])
         }
 
@@ -869,6 +882,17 @@ final class LocalAIClient {
         return text
     }
 
+    private func removingOrphanedClosingTagPrefix(named tag: String, from raw: String) -> String {
+        var text = raw
+        let close = "</\(tag)>"
+
+        if let end = text.range(of: close, options: [.caseInsensitive]) {
+            text.removeSubrange(text.startIndex..<end.upperBound)
+        }
+
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func strippingSurroundingCodeFence(from raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("```") else { return trimmed }
@@ -909,6 +933,30 @@ final class LocalAIClient {
     private func timeoutForTextLength(_ count: Int) -> TimeInterval {
         min(180.0, max(20.0, 20.0 + Double(count) / 120.0))
     }
+
+    private static func translationSystemPrompt(targetLanguage: String) -> String {
+        """
+        You are Verso, a private local translation engine.
+        Translate into \(targetLanguage) only.
+        Return only the final translated text.
+        Do not explain, analyze, restate the task, ask questions, or add labels.
+        Do not include <think> tags or hidden reasoning text.
+        Do not answer in the source language or in a third language.
+        If the target language is English, every natural-language sentence in the output must be English.
+        """
+    }
+
+    private static let conciseSystemPrompt = """
+    You are Verso, a private local assistant. Follow the user instruction exactly and answer with the shortest valid output.
+    """
+
+    private static let tutorSystemPrompt = """
+    You are Verso, a private local translation tutor. Answer only the user's current question, in the user's question language, without re-translating unless asked.
+    """
+
+    private static let jsonOnlySystemPrompt = """
+    You are Verso, a private local translation analysis engine. Output valid JSON only, with no explanation, labels, or code fences.
+    """
 
     private static let discoveryCandidates: [(backend: LocalAIBackend, endpoint: String)] = [
         (.ollama, "http://localhost:11434"),
