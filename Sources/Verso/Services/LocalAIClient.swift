@@ -795,22 +795,37 @@ final class LocalAIClient {
 
     private func cleanModelOutput(_ raw: String) -> String {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        text = strippingSurroundingCodeFence(from: text)
 
         for tag in ["think", "thinking", "reasoning"] {
             text = removingTag(named: tag, from: text)
+            text = text.replacingOccurrences(of: "</\(tag)>", with: "", options: [.caseInsensitive])
         }
 
         let prefixes = [
+            "Assistant:",
+            "Output:",
+            "Result:",
             "Translation:",
             "Translated text:",
             "Here is the translation:",
+            "Here's the translation:",
+            "**Translation:**",
+            "### Translation",
             "翻訳:",
             "翻訳結果:",
             "訳:"
         ]
-        for prefix in prefixes where text.range(of: prefix, options: [.caseInsensitive])?.lowerBound == text.startIndex {
-            text = String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        var didStripPrefix = true
+        while didStripPrefix {
+            didStripPrefix = false
+            for prefix in prefixes where text.range(of: prefix, options: [.caseInsensitive])?.lowerBound == text.startIndex {
+                text = String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                didStripPrefix = true
+            }
         }
+        text = strippingSurroundingCodeFence(from: text)
+        text = strippingSurroundingQuotes(from: text)
         return text
     }
 
@@ -832,6 +847,43 @@ final class LocalAIClient {
             text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
+        return text
+    }
+
+    private func strippingSurroundingCodeFence(from raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("```") else { return trimmed }
+
+        var lines = trimmed.components(separatedBy: .newlines)
+        guard let first = lines.first, first.hasPrefix("```") else { return trimmed }
+        lines.removeFirst()
+
+        if let last = lines.last,
+           last.trimmingCharacters(in: .whitespacesAndNewlines) == "```" {
+            lines.removeLast()
+        }
+
+        let unfenced = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return unfenced.isEmpty ? trimmed : unfenced
+    }
+
+    private func strippingSurroundingQuotes(from raw: String) -> String {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let quotePairs: [(Character, Character)] = [
+            ("\"", "\""),
+            ("'", "'")
+        ]
+
+        var didStrip = true
+        while didStrip, text.count >= 2 {
+            didStrip = false
+            for (open, close) in quotePairs where text.first == open && text.last == close {
+                text.removeFirst()
+                text.removeLast()
+                text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                didStrip = true
+            }
+        }
         return text
     }
 
