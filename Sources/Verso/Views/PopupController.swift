@@ -440,7 +440,7 @@ final class PopupController {
                     text: vm.originalText,
                     from: pair.sourceFull,
                     to: pair.targetFull,
-                    context: self.settings.translatorContext,
+                    context: self.activePromptContext(),
                     glossary: self.glossary.formattedForPrompt(),
                     sourceAppHint: self.sourceApp?.localizedName,
                     preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode,
