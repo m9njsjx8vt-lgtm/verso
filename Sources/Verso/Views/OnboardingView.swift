@@ -142,9 +142,7 @@ struct OnboardingView: View {
 
     private var welcomeStep: some View {
         VStack(spacing: 16) {
-            Image(systemName: "character.bubble")
-                .font(.system(size: 64))
-                .foregroundColor(.accentColor)
+            AppIconMark(size: 76)
             Text("Versoへようこそ")
                 .font(.largeTitle)
                 .bold()
@@ -688,5 +686,34 @@ private struct FeatureRow: View {
             }
             Spacer()
         }
+    }
+}
+
+struct AppIconMark: View {
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let icon = appIcon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .antialiased(true)
+                    .scaledToFit()
+            } else {
+                Image(systemName: "character.bubble")
+                    .font(.system(size: size * 0.55, weight: .semibold))
+                    .foregroundColor(.accentColor)
+                    .frame(width: size, height: size)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        .shadow(color: Color.black.opacity(0.16), radius: size * 0.08, y: size * 0.04)
+        .accessibilityLabel("Verso")
+    }
+
+    private var appIcon: NSImage? {
+        NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
     }
 }

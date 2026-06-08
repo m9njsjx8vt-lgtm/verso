@@ -718,7 +718,7 @@ struct SettingsView: View {
 
     private var aboutTab: some View {
         VStack(spacing: 12) {
-            Image(systemName: "character.bubble").font(.system(size: 56)).foregroundColor(.accentColor)
+            AppIconMark(size: 72)
             Text("Verso").font(.title).bold()
             Text("Personal AI translation, on every page")
                 .font(.callout).foregroundColor(.secondary)
