@@ -84,7 +84,7 @@ gh release create v0.7.0 dist/Verso-v0.7.0.dmg \
 git add appcast.xml && git commit -m "release v0.7.0" && git push
 ```
 
-## 7. 奥さん側
+## 7. 将来の引き渡し先側
 
 何もしなくてよい:
 - Verso が起動中なら 1日1回 SUFeedURL をチェック
@@ -95,8 +95,8 @@ git add appcast.xml && git commit -m "release v0.7.0" && git push
 
 | | Before (Sparkle なし) | After (Sparkle あり) |
 |---|---|---|
-| アップデート通知 | あなたが「新版送るね」と LINE | 自動表示 |
-| インストール | 奥さんが DMG 開いて手動コピー | 1クリック |
+| アップデート通知 | あなたが「新版送るね」と連絡 | 自動表示 |
+| インストール | 受け取った人が DMG を開いて手動コピー | 1クリック |
 | 警告 | Gatekeeper警告（自己署名） | 警告なし（EdDSA自動検証） |
 
 ## 9. 工数
@@ -106,8 +106,8 @@ git add appcast.xml && git commit -m "release v0.7.0" && git push
 - **build_dmg.sh の sign + appcast 更新拡張**: 30分
 - **テストリリース → 別Macで自動DL確認**: 30分
 
-合計 ~2時間で「奥さんに渡してから後の運用が完全自動」になる。
+合計 ~2時間で「別ユーザーに渡してから後の運用が完全自動」になる。
 
 ## 10. やるタイミング
 
-奥さん渡しの**当日 or 前日**に組むのが良い。早すぎても使わない。
+別ユーザーへ渡す**当日 or 前日**に組むのが良い。早すぎても使わない。

@@ -1,21 +1,24 @@
 # Verso — プライバシーポリシー
 
-Last updated: 2026-05-14
+Last updated: 2026-06-08
 
 Verso (以下「本アプリ」) は Tomoro Iwasaki が個人開発する macOS アプリケーションです。本ポリシーは本アプリがどのようにユーザーデータを扱うかを説明します。
 
 ## 1. 収集・送信するデータ
 
-本アプリ自体は**ユーザーデータをいかなる第三者にも収集・送信しません**。
+本アプリ自体は**ユーザーデータを開発者のサーバーへ収集・送信しません**。
 
-ただし、ユーザーが翻訳機能を実行した場合、入力テキストは以下のサードパーティ翻訳API（ユーザーが設定したもの）にのみ送信されます:
+翻訳時の送信先は、ユーザーが選んだ AI Engine と任意設定により変わります。
 
-- **Google AI Studio (Gemini API)** — 翻訳本体
+- **Local AI (Ollama / LM Studio / OpenAI互換ローカルサーバー)** — 既定。入力テキストは設定されたローカルEndpointへ送信されます。通常はこのMac内の `localhost` で処理され、インターネット接続は不要です。
+- **Google AI Studio (Gemini API)** — Gemini を選択した場合のみ、翻訳本体として送信されます。
   - https://policies.google.com/privacy
-- **DeepL API** (任意) — 即時プレビュー
+- **DeepL API** (任意) — DeepL APIキーを設定し、オンラインの場合のみ、即時プレビューとして送信されます。
   - https://www.deepl.com/privacy
 
-これらのAPIへの送信内容・利用条件は各サービスのプライバシーポリシーに従います。本アプリ開発者は中継サーバーを持たず、これらの通信を傍受・記録しません。
+GeminiやDeepLへの送信内容・利用条件は各サービスのプライバシーポリシーに従います。本アプリ開発者は中継サーバーを持たず、これらの通信を傍受・記録しません。
+
+Geminiを選択していてもMacがオフラインの場合、本アプリはそのリクエストのみLocal AIへフォールバックします。
 
 ## 2. ローカル保存データ
 
@@ -24,6 +27,7 @@ Verso (以下「本アプリ」) は Tomoro Iwasaki が個人開発する macOS 
 | データ | 場所 | 用途 |
 |---|---|---|
 | API キー（Gemini, DeepL） | `~/Library/Application Support/Verso/secrets.json` (mode 0600) | API認証 |
+| Local AI Endpoint / Model | macOS UserDefaults | ローカルAI接続設定 |
 | 翻訳履歴 | `~/Library/Application Support/Verso/history.json` | 履歴検索・再利用 |
 | 用語集 (Glossary) | `~/Library/Application Support/Verso/glossary.json` | 翻訳プロンプト注入 |
 | 使用統計 (トークン数) | `~/Library/Application Support/Verso/usage.json` | コスト確認 |
@@ -34,6 +38,7 @@ Verso (以下「本アプリ」) は Tomoro Iwasaki が個人開発する macOS 
 - **履歴を残さない**: Settings → Behavior → Privacy mode を ON
 - **履歴を消す**: Settings → Usage タブ、または手動でファイル削除
 - **API キーを削除**: Settings → General で空欄にする
+- **クラウド送信を避ける**: Settings → General → AI Engine で Local AI を選ぶ
 - **すべて消去**: `~/Library/Application Support/Verso/` ディレクトリを削除
 
 ## 4. システム権限

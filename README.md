@@ -35,6 +35,8 @@ xcodegen && open Verso.xcodeproj
 
 ## First-time setup
 
+Detailed personal setup notes live in [`docs/personal-setup-guide.md`](docs/personal-setup-guide.md).
+
 1. Launch the app — a 🔤 icon appears in the menu bar
 2. In the welcome tour, choose **Gemini** or **Local AI**
 3. For Gemini, paste your API key (get one free at https://aistudio.google.com/apikey), or skip and add it later
@@ -82,9 +84,9 @@ Sources/Verso/
 ├── TranslatorApp.swift         # @main, app entry
 ├── AppDelegate.swift           # Menu bar + lifecycle
 ├── Models/
-│   └── Settings.swift          # AppSettings: UserDefaults + Keychain
+│   └── Settings.swift          # AppSettings: UserDefaults + SecretsStore
 ├── Services/
-│   ├── KeychainService.swift   # API key storage (com.tomoro.verso)
+│   ├── SecretsStore.swift      # API key storage (secrets.json with 0600 perms)
 │   ├── AccessibilityService.swift
 │   ├── HotkeyMonitor.swift     # ⌘C×2 detection (NSEvent global monitor)
 │   ├── GeminiClient.swift      # Gemini API wrapper (URLSession + async/await)

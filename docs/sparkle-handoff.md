@@ -173,7 +173,7 @@ git add docs/appcast.xml && git commit -m "release v0.9.0" && git push
 
 ---
 
-## Step 7 — 奥さん側
+## Step 7 — 将来の引き渡し先側
 
 何もしなくていい:
 - Verso 起動中に 1日1回 `SUFeedURL` をチェック
@@ -190,7 +190,7 @@ git add docs/appcast.xml && git commit -m "release v0.9.0" && git push
 - [ ] `docs/appcast.xml` 初版コミット
 - [ ] `build_dmg.sh` を Sparkle 対応に拡張
 - [ ] テストリリース (v0.8.1) を作って自分のMacで自動DLが動くか確認
-- [ ] OK なら奥さんに DMG URL を送る (初回だけ手動)
+- [ ] OK なら引き渡し先に DMG URL を送る (初回だけ手動)
 
 ---
 
