@@ -22,6 +22,20 @@ SPARKLE_BIN="./build/SourcePackages/artifacts/sparkle/Sparkle/bin"
 SIGNING_IDENTITY="${CODE_SIGN_IDENTITY:-Verso Self-Signed}"
 REPO_FULL_NAME="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo m9njsjx8vt-lgtm/verso)}"
 
+CHANGELOG_ITEMS=""
+if command -v git >/dev/null 2>&1; then
+    LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+    if [ -n "$LAST_TAG" ]; then
+        LOG_RANGE="${LAST_TAG}..HEAD"
+    else
+        LOG_RANGE="HEAD"
+    fi
+    CHANGELOG_ITEMS="$(git log "$LOG_RANGE" --no-merges --max-count=8 --pretty=format:'          <li>%s</li>' 2>/dev/null || true)"
+fi
+if [ -z "$CHANGELOG_ITEMS" ]; then
+    CHANGELOG_ITEMS="          <li>Maintenance and stability improvements.</li>"
+fi
+
 echo "▸ Generating Xcode project..."
 if command -v xcodegen >/dev/null 2>&1; then
     xcodegen >/dev/null
@@ -92,7 +106,7 @@ if [ -x "$SPARKLE_BIN/sign_update" ]; then
       <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
       <description><![CDATA[
         <ul>
-          <li>TODO: changelog for v${VERSION}</li>
+${CHANGELOG_ITEMS}
         </ul>
       ]]></description>
       <enclosure
