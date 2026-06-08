@@ -6,7 +6,7 @@ final class HistoryWindowController {
     private let history: HistoryStore
     private var window: NSWindow?
     private weak var workspaceController: WorkspaceWindowController?
-    private weak var sourceApp: NSRunningApplication?
+    private var sourceApp: NSRunningApplication?
 
     init(
         history: HistoryStore,
