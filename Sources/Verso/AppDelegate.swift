@@ -274,16 +274,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func recheckAccessibility() {
-        if AccessibilityService.isTrusted() {
+        let accessibilityOK = AccessibilityService.isTrusted()
+        let screenRecordingOK = ScreenCapturePermissionService.isTrusted()
+
+        if accessibilityOK && screenRecordingOK {
             let alert = NSAlert()
-            alert.messageText = L10n.t("Accessibility OK", "アクセシビリティ OK")
+            alert.messageText = L10n.t("Permissions OK", "権限 OK")
             alert.informativeText = L10n.t(
-                "⌘C×2, ⌥⇧C, ⌘⇧H, ⌘⇧V, ⌘⇧T are all working.",
-                "⌘C×2、⌥⇧C、⌘⇧H、⌘⇧V、⌘⇧T が動作します。"
+                "Hotkeys and OCR screen capture are available.",
+                "ホットキーとOCR用の画面キャプチャが使えます。"
             )
             alert.runModal()
         } else {
-            _ = AccessibilityService.checkAndPromptIfNeeded()
+            if !accessibilityOK {
+                _ = AccessibilityService.checkAndPromptIfNeeded()
+            }
+            if !screenRecordingOK {
+                _ = ScreenCapturePermissionService.requestIfNeeded()
+            }
         }
     }
 

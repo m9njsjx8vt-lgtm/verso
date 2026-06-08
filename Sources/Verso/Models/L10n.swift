@@ -52,7 +52,7 @@ enum L10n {
     static var menuCheckForUpdates:       String { t("Check for Updates…",              "アップデートを確認…") }
     static var menuSettings:              String { t("Settings…",                       "設定…") }
     static var menuShowWelcome:           String { t("Show Welcome Tour…",              "ようこそツアーを表示…") }
-    static var menuCheckAccessibility:    String { t("Check Accessibility Permission",  "アクセシビリティ権限を確認") }
+    static var menuCheckAccessibility:    String { t("Check Permissions",  "権限を確認") }
     static var menuQuit:                  String { t("Quit Verso",                      "Verso を終了") }
 
     // MARK: - Settings tabs

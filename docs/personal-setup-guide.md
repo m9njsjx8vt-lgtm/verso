@@ -83,7 +83,7 @@ Use **Settings → Glossary** for terms that should always translate the same wa
 
 ### Cmd+C twice does nothing
 
-1. Menu bar icon → **Check Accessibility Permission**.
+1. Menu bar icon → **Check Permissions**.
 2. Re-enable Verso in macOS Accessibility settings.
 3. Relaunch Verso.
 

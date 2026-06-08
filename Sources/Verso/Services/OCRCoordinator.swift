@@ -11,6 +11,8 @@ final class OCRCoordinator {
 
     /// Capture the entire frontmost (non-Verso) window and OCR-translate it.
     func startWindowTranslation() {
+        guard ensureScreenCapturePermission() else { return }
+
         // Find the frontmost non-Verso app, then its main window
         guard let frontApp = NSWorkspace.shared.runningApplications
             .filter({ $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier })
@@ -61,6 +63,7 @@ final class OCRCoordinator {
 
     /// Start the screen-region translation flow.
     func startRegionTranslation() {
+        guard ensureScreenCapturePermission() else { return }
         guard let screen = NSScreen.main else { return }
 
         // Close any existing selection window first
@@ -111,6 +114,17 @@ final class OCRCoordinator {
             return
         }
         popupController?.show(originalText: trimmed)
+    }
+
+    private func ensureScreenCapturePermission() -> Bool {
+        if ScreenCapturePermissionService.isTrusted() {
+            return true
+        }
+        if ScreenCapturePermissionService.requestIfNeeded() {
+            return true
+        }
+        showError("Screen Recording 権限が未許可です。System Settings → Privacy & Security → Screen Recording で Verso を許可してください。")
+        return false
     }
 
     private func showError(_ message: String) {
