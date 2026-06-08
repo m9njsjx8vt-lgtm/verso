@@ -164,20 +164,24 @@ final class LocalAIClient {
         model: String,
         onChunk: @escaping (String) async -> Void
     ) async throws -> (text: String, usage: GeminiUsage?) {
-        let result = try await translate(
+        let prompt = GeminiClient.buildTranslatePrompt(
             text: text,
             from: from,
             to: to,
             context: context,
             glossary: glossary,
             sourceAppHint: sourceAppHint,
-            preserveMarkdownAndCode: preserveMarkdownAndCode,
+            preserveMarkdownAndCode: preserveMarkdownAndCode
+        )
+        let output = try await completeStreaming(
+            prompt: prompt,
             backend: backend,
             endpoint: endpoint,
-            model: model
+            model: model,
+            timeout: timeoutForTextLength(text.count),
+            onChunk: onChunk
         )
-        await onChunk(result.text)
-        return result
+        return (output, nil)
     }
 
     func refine(
@@ -322,33 +326,14 @@ final class LocalAIClient {
         let modelName = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !modelName.isEmpty else { throw LocalAIError.missingModel }
 
-        let url = try endpointURL(for: backend, rawEndpoint: endpoint)
-        var request = URLRequest(url: url, timeoutInterval: timeout)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        switch backend {
-        case .ollama:
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
-                "model": modelName,
-                "messages": [["role": "user", "content": prompt]],
-                "stream": false,
-                "options": ["temperature": 0.2]
-            ])
-        case .openAICompatible:
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
-                "model": modelName,
-                "messages": [
-                    [
-                        "role": "system",
-                        "content": "You are Verso, a private local translation assistant. Follow the user prompt exactly."
-                    ],
-                    ["role": "user", "content": prompt]
-                ],
-                "temperature": 0.2,
-                "stream": false
-            ])
-        }
+        let request = try completionRequest(
+            prompt: prompt,
+            backend: backend,
+            endpoint: endpoint,
+            modelName: modelName,
+            timeout: timeout,
+            streaming: false
+        )
 
         let data: Data
         let response: URLResponse
@@ -379,6 +364,191 @@ final class LocalAIClient {
         let cleaned = cleanModelOutput(raw)
         guard !cleaned.isEmpty else { throw LocalAIError.invalidResponse }
         return cleaned
+    }
+
+    private func completeStreaming(
+        prompt: String,
+        backend: LocalAIBackend,
+        endpoint: String,
+        model: String,
+        timeout: TimeInterval,
+        onChunk: @escaping (String) async -> Void
+    ) async throws -> String {
+        let modelName = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !modelName.isEmpty else { throw LocalAIError.missingModel }
+
+        let request = try completionRequest(
+            prompt: prompt,
+            backend: backend,
+            endpoint: endpoint,
+            modelName: modelName,
+            timeout: timeout,
+            streaming: true
+        )
+
+        let bytes: URLSession.AsyncBytes
+        let response: URLResponse
+        do {
+            (bytes, response) = try await URLSession.shared.bytes(for: request)
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw LocalAIError.timedOut
+        } catch let urlError as URLError {
+            throw LocalAIError.connectionFailed(urlError.localizedDescription)
+        } catch {
+            throw LocalAIError.connectionFailed(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw LocalAIError.invalidResponse
+        }
+        guard http.statusCode == 200 else {
+            var body = Data()
+            for try await byte in bytes {
+                body.append(contentsOf: [byte])
+            }
+            throw LocalAIError.httpError(http.statusCode, String(data: body, encoding: .utf8) ?? "")
+        }
+
+        var accumulated = ""
+        do {
+            switch backend {
+            case .ollama:
+                accumulated = try await readOllamaStream(bytes: bytes, onChunk: onChunk)
+            case .openAICompatible:
+                accumulated = try await readOpenAICompatibleStream(bytes: bytes, onChunk: onChunk)
+            }
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw LocalAIError.timedOut
+        } catch let error as LocalAIError {
+            throw error
+        } catch {
+            throw LocalAIError.connectionFailed(error.localizedDescription)
+        }
+
+        let cleaned = cleanModelOutput(accumulated)
+        guard !cleaned.isEmpty else { throw LocalAIError.invalidResponse }
+        return cleaned
+    }
+
+    private func completionRequest(
+        prompt: String,
+        backend: LocalAIBackend,
+        endpoint: String,
+        modelName: String,
+        timeout: TimeInterval,
+        streaming: Bool
+    ) throws -> URLRequest {
+        let url = try endpointURL(for: backend, rawEndpoint: endpoint)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        switch backend {
+        case .ollama:
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "model": modelName,
+                "messages": [["role": "user", "content": prompt]],
+                "stream": streaming,
+                "options": ["temperature": 0.2]
+            ])
+        case .openAICompatible:
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "model": modelName,
+                "messages": [
+                    [
+                        "role": "system",
+                        "content": "You are Verso, a private local translation assistant. Follow the user prompt exactly."
+                    ],
+                    ["role": "user", "content": prompt]
+                ],
+                "temperature": 0.2,
+                "stream": streaming
+            ])
+        }
+
+        return request
+    }
+
+    private func readOllamaStream(
+        bytes: URLSession.AsyncBytes,
+        onChunk: @escaping (String) async -> Void
+    ) async throws -> String {
+        var accumulated = ""
+
+        for try await line in bytes.lines {
+            if Task.isCancelled { break }
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            guard
+                let data = trimmed.data(using: .utf8),
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
+                continue
+            }
+
+            if let error = json["error"] as? String, !error.isEmpty {
+                throw LocalAIError.connectionFailed(error)
+            }
+
+            if let message = json["message"] as? [String: Any],
+               let content = message["content"] as? String,
+               !content.isEmpty {
+                accumulated += content
+                let cleaned = cleanModelOutput(accumulated)
+                if !cleaned.isEmpty {
+                    await onChunk(cleaned)
+                }
+            }
+
+            if (json["done"] as? Bool) == true {
+                break
+            }
+        }
+
+        return accumulated
+    }
+
+    private func readOpenAICompatibleStream(
+        bytes: URLSession.AsyncBytes,
+        onChunk: @escaping (String) async -> Void
+    ) async throws -> String {
+        var accumulated = ""
+
+        for try await line in bytes.lines {
+            if Task.isCancelled { break }
+            guard line.hasPrefix("data: ") else { continue }
+            let payload = String(line.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if payload == "[DONE]" { break }
+            guard
+                let data = payload.data(using: .utf8),
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
+                continue
+            }
+
+            if let error = json["error"] as? [String: Any] {
+                let message = error["message"] as? String ?? "OpenAI-compatible stream error"
+                throw LocalAIError.connectionFailed(message)
+            }
+
+            guard
+                let choices = json["choices"] as? [[String: Any]],
+                let first = choices.first,
+                let delta = first["delta"] as? [String: Any],
+                let content = delta["content"] as? String,
+                !content.isEmpty
+            else {
+                continue
+            }
+
+            accumulated += content
+            let cleaned = cleanModelOutput(accumulated)
+            if !cleaned.isEmpty {
+                await onChunk(cleaned)
+            }
+        }
+
+        return accumulated
     }
 
     private func endpointURL(for backend: LocalAIBackend, rawEndpoint: String) throws -> URL {
@@ -489,6 +659,10 @@ final class LocalAIClient {
         while let start = text.range(of: "<think>"),
               let end = text.range(of: "</think>", range: start.upperBound..<text.endIndex) {
             text.removeSubrange(start.lowerBound..<end.upperBound)
+            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let openThink = text.range(of: "<think>") {
+            text.removeSubrange(openThink.lowerBound..<text.endIndex)
             text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         let prefixes = ["Translation:", "翻訳:", "訳:"]
