@@ -80,6 +80,10 @@ struct OnboardingView: View {
             localBackendDraft = settings.localAIBackend
             localEndpointDraft = settings.localAIEndpoint
             localModelDraft = settings.localAIModel
+            refreshLocalAIModelsIfUseful()
+        }
+        .onChange(of: providerDraft) { _ in
+            refreshLocalAIModelsIfUseful()
         }
     }
 
@@ -251,6 +255,7 @@ struct OnboardingView: View {
                 localAITestSucceeded = false
                 localAIAppLaunchMessage = nil
                 localAIAppLaunchSucceeded = false
+                refreshLocalAIModelsIfUseful()
             }
 
             HStack(spacing: 8) {
@@ -462,6 +467,20 @@ struct OnboardingView: View {
                 }
             }
         }
+    }
+
+    private func refreshLocalAIModelsIfUseful() {
+        guard selectedProvider == .localAI else { return }
+        guard !isLoadingLocalAIModels else { return }
+        guard !localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        let currentModel = localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !discoveredLocalAIModels.isEmpty,
+           discoveredLocalAIModels.contains(where: { $0.name == currentModel }) {
+            return
+        }
+
+        refreshLocalAIModels()
     }
 
     private func testLocalAIConnection() {

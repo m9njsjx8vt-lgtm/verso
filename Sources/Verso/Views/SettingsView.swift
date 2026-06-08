@@ -40,6 +40,12 @@ struct SettingsView: View {
         }
         .frame(width: 660, height: 560)
         .padding(20)
+        .onAppear {
+            refreshLocalAIModelsIfUseful()
+        }
+        .onChange(of: settings.translationProvider) { _ in
+            refreshLocalAIModelsIfUseful()
+        }
     }
 
     // MARK: - General
@@ -207,6 +213,7 @@ struct SettingsView: View {
                 localAITestSucceeded = false
                 localAIAppLaunchMessage = nil
                 localAIAppLaunchSucceeded = false
+                refreshLocalAIModelsIfUseful()
             }
 
             HStack(spacing: 8) {
@@ -357,6 +364,20 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func refreshLocalAIModelsIfUseful() {
+        guard settings.usesLocalAI else { return }
+        guard !isLoadingLocalAIModels else { return }
+        guard !settings.localAIEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        let currentModel = settings.localAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !discoveredLocalAIModels.isEmpty,
+           discoveredLocalAIModels.contains(where: { $0.name == currentModel }) {
+            return
+        }
+
+        refreshLocalAIModels()
     }
 
     private func testLocalAIConnection() {
