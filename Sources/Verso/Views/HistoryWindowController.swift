@@ -17,9 +17,7 @@ final class HistoryWindowController {
     }
 
     func show() {
-        if let app = frontmostNonVersoApplication() {
-            sourceApp = app
-        }
+        sourceApp = frontmostNonVersoApplication()
 
         if let w = window {
             NSApp.activate(ignoringOtherApps: true)
