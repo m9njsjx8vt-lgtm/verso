@@ -25,6 +25,7 @@ final class PopupViewModel: ObservableObject {
     @Published var allowsCloudPro: Bool
     @Published var canStartLocalAIServer: Bool
     @Published var localAIStartButtonTitle: String
+    @Published var showsAIResult: Bool
 
     // --- Grammar chat state ---
     @Published var chatMessages: [ChatMessage] = []
@@ -39,6 +40,7 @@ final class PopupViewModel: ObservableObject {
     let onCopy: (String) -> Void
     let onClose: () -> Void
     let onRefine: (String) -> Void
+    let onCorrectOwnWriting: () -> Void
     let onAddGlossary: (String, String, Bool) -> Void
     let onUndo: () -> Void
     let onRetry: () -> Void
@@ -62,10 +64,13 @@ final class PopupViewModel: ObservableObject {
         allowsCloudPro: Bool,
         canStartLocalAIServer: Bool,
         localAIStartButtonTitle: String,
+        showAIResult: Bool,
+        showDeepLResult: Bool,
         onInsert: @escaping (String) -> Void,
         onCopy: @escaping (String) -> Void,
         onClose: @escaping () -> Void,
         onRefine: @escaping (String) -> Void,
+        onCorrectOwnWriting: @escaping () -> Void,
         onAddGlossary: @escaping (String, String, Bool) -> Void,
         onUndo: @escaping () -> Void,
         onRetry: @escaping () -> Void,
@@ -83,7 +88,7 @@ final class PopupViewModel: ObservableObject {
         self.originalText = originalText
         self.fromLang = fromLang
         self.toLang = toLang
-        self.deepLState = deepLConfigured ? .loading : .notConfigured
+        self.deepLState = deepLConfigured && showDeepLResult ? .loading : .notConfigured
         self.stayOpen = stayOpen
         self.privacyMode = privacyMode
         self.conversationDepth = conversationDepth
@@ -92,10 +97,12 @@ final class PopupViewModel: ObservableObject {
         self.allowsCloudPro = allowsCloudPro
         self.canStartLocalAIServer = canStartLocalAIServer
         self.localAIStartButtonTitle = localAIStartButtonTitle
+        self.showsAIResult = showAIResult
         self.onInsert = onInsert
         self.onCopy = onCopy
         self.onClose = onClose
         self.onRefine = onRefine
+        self.onCorrectOwnWriting = onCorrectOwnWriting
         self.onAddGlossary = onAddGlossary
         self.onUndo = onUndo
         self.onRetry = onRetry
@@ -112,14 +119,16 @@ final class PopupViewModel: ObservableObject {
     }
 
     var primaryInsertText: String {
+        if showsAIResult, case .ok(let t) = geminiState { return t }
+        if showDeepLPanel, case .ok(let t) = deepLState { return t }
         if case .ok(let t) = geminiState { return t }
         if case .ok(let t) = deepLState { return t }
         return ""
     }
 
     var hasAnyTranslation: Bool {
-        if case .ok = geminiState { return true }
-        if case .ok = deepLState { return true }
+        if showsAIResult, case .ok = geminiState { return true }
+        if showDeepLPanel, case .ok = deepLState { return true }
         return false
     }
 
@@ -134,7 +143,9 @@ final class PopupViewModel: ObservableObject {
     }
 
     var showDeepLPanel: Bool { deepLState != .notConfigured }
+    var showAIPanel: Bool { showsAIResult }
     var canUndo: Bool { !undoStack.isEmpty && !isRefining }
+    var canCorrectOwnWriting: Bool { fromLang == "EN" }
 
     func showToast(_ message: String, duration: TimeInterval = 2.5) {
         toast = message
@@ -166,15 +177,17 @@ struct PopupView: View {
                     providerPanel(title: "DeepL", icon: "bolt.fill", color: .blue,
                                   state: viewModel.deepLState, isCompact: true, editable: false)
                 }
-                providerPanel(
-                    title: viewModel.isRefining
-                        ? "\(viewModel.aiProviderTitle)  •  WORKING…"
-                        : viewModel.aiProviderTitle,
-                    icon: viewModel.aiProviderIcon,
-                    color: viewModel.aiProviderTitle == "Local AI" ? .green : .purple,
-                    state: viewModel.geminiState, isCompact: false, editable: true)
-                if viewModel.isGeminiOk && !viewModel.isEditing { refineBar }
-                if viewModel.isChatExpanded && viewModel.isGeminiOk { chatPanel }
+                if viewModel.showAIPanel {
+                    providerPanel(
+                        title: viewModel.isRefining
+                            ? "\(viewModel.aiProviderTitle)  •  WORKING…"
+                            : viewModel.aiProviderTitle,
+                        icon: viewModel.aiProviderIcon,
+                        color: viewModel.aiProviderTitle == "Local AI" ? .green : .purple,
+                        state: viewModel.geminiState, isCompact: false, editable: true)
+                }
+                if viewModel.showAIPanel && viewModel.isGeminiOk && !viewModel.isEditing { refineBar }
+                if viewModel.showAIPanel && viewModel.isChatExpanded && viewModel.isGeminiOk { chatPanel }
                 actionBar
             }
             .padding(16)
@@ -191,9 +204,18 @@ struct PopupView: View {
         .animation(.easeInOut(duration: 0.2), value: viewModel.isChatExpanded)
         .frame(minWidth: 500, idealWidth: 720, maxWidth: .infinity,
                minHeight: 380,
-               idealHeight: viewModel.isChatExpanded ? 760 : (viewModel.showDeepLPanel ? 580 : 480),
+               idealHeight: viewModel.isChatExpanded ? 760 : idealPopupHeight,
                maxHeight: .infinity)
         .background(keyboardShortcuts)
+    }
+
+    private var idealPopupHeight: CGFloat {
+        switch (viewModel.showDeepLPanel, viewModel.showAIPanel) {
+        case (true, true): return 580
+        case (true, false): return 420
+        case (false, true): return 480
+        case (false, false): return 380
+        }
     }
 
     private var keyboardShortcuts: some View {
@@ -201,7 +223,7 @@ struct PopupView: View {
             if viewModel.canUndo {
                 Button("") { viewModel.onUndo() }.keyboardShortcut("z", modifiers: .command).opacity(0)
             }
-            if viewModel.isGeminiOk && !viewModel.isEditing {
+            if viewModel.showAIPanel && viewModel.isGeminiOk && !viewModel.isEditing {
                 Button("") { viewModel.onRefine("Make the translation shorter and more concise while preserving meaning.") }
                     .keyboardShortcut("1", modifiers: .command).opacity(0)
                 Button("") { viewModel.onRefine("Make the translation more casual and conversational.") }
@@ -210,6 +232,10 @@ struct PopupView: View {
                     .keyboardShortcut("3", modifiers: .command).opacity(0)
                 Button("") { viewModel.onRefine("Provide an alternative translation with different word choices.") }
                     .keyboardShortcut("4", modifiers: .command).opacity(0)
+                if viewModel.canCorrectOwnWriting {
+                    Button("") { viewModel.onCorrectOwnWriting() }
+                        .keyboardShortcut("5", modifiers: .command).opacity(0)
+                }
             }
         }
     }
@@ -392,6 +418,11 @@ struct PopupView: View {
                 label: { Label("丁寧", systemImage: "person.crop.circle.badge.checkmark") }.help("⌘3 — formal")
             Button { viewModel.onRefine("Provide an alternative translation with different word choices.") }
                 label: { Label("別案", systemImage: "arrow.triangle.2.circlepath") }.help("⌘4 — alternative")
+            if viewModel.canCorrectOwnWriting {
+                Button { viewModel.onCorrectOwnWriting() }
+                    label: { Label("添削", systemImage: "checkmark.seal") }
+                    .help("⌘5 — 自分で書いた英文を直してミス傾向を記録")
+            }
             if viewModel.allowsCloudPro {
                 Button { viewModel.onTryWithPro() }
                     label: { Label("Pro", systemImage: "star.fill") }.help("Try with Gemini 2.5 Pro")
@@ -583,6 +614,8 @@ struct PopupView: View {
     }
 
     private var insertLabel: String {
+        if viewModel.showAIPanel, case .ok = viewModel.geminiState { return "挿入 (\(viewModel.aiProviderTitle))" }
+        if viewModel.showDeepLPanel, case .ok = viewModel.deepLState { return "挿入 (DeepL)" }
         if case .ok = viewModel.geminiState { return "挿入 (\(viewModel.aiProviderTitle))" }
         if case .ok = viewModel.deepLState { return "挿入 (DeepL)" }
         return "挿入"

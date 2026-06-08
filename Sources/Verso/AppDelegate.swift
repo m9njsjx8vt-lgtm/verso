@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
     let glossary = Glossary()
     let history = HistoryStore()
+    let writingMistakes = WritingMistakeStore()
     let usage = UsageTracker()
     let cache = TranslationCache()
     let network = NetworkMonitor()
@@ -36,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let popup = PopupController(
             settings: settings, glossary: glossary, history: history,
+            writingMistakes: writingMistakes,
             usage: usage, cache: cache, network: network
         )
         popupController = popup

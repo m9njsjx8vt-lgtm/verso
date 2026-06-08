@@ -266,6 +266,24 @@ final class GeminiClient {
                                                 + priorMessages.reduce(0) { $0 + $1.content.count })
     }
 
+    // MARK: - Own-writing correction
+
+    func correctOwnWriting(
+        text: String,
+        context: String?,
+        model: String,
+        apiKey: String
+    ) async throws -> (result: WritingCorrectionResult, usage: GeminiUsage?) {
+        let prompt = Self.buildOwnWritingCorrectionPrompt(text: text, context: context)
+        let response = try await callWithRetry(prompt: prompt, model: model, apiKey: apiKey, textLen: text.count)
+        do {
+            let parsed = try WritingCorrectionResult.parse(from: response.text, fallbackText: text)
+            return (parsed, response.usage)
+        } catch {
+            throw GeminiError.invalidResponse
+        }
+    }
+
     // MARK: - Auto-glossary extraction (unchanged signature)
 
     func extractGlossaryDiff(
@@ -492,6 +510,41 @@ final class GeminiClient {
         Output ONLY the refined translation in \(to). \
         Preserve the meaning of the original. \
         No quotes, no explanations, no labels.
+        """
+    }
+
+    static func buildOwnWritingCorrectionPrompt(text: String, context: String?) -> String {
+        let ctxBlock = nonEmptyBlock(title: "USER CONTEXT", body: context)
+        return """
+        You are Verso's writing coach for this specific user. The user confirms the text below is their own writing.
+        \(ctxBlock)
+        ## TASK
+        Correct grammar, punctuation, word choice, and clarity while preserving the user's meaning, tone, proper nouns, Markdown, code identifiers, URLs, and formatting.
+
+        ## STRICT RULES
+        - Do not translate the text.
+        - Keep the correctedText in the same language as the source text.
+        - Do not rewrite aggressively; make only corrections or light clarity improvements.
+        - Explain each mistake briefly in Japanese.
+        - If there is no mistake, return the original text as correctedText and an empty mistakes array.
+
+        ## OUTPUT
+        Return valid JSON only, with exactly this shape:
+        {
+          "correctedText": "corrected text here",
+          "mistakes": [
+            {
+              "category": "articles | prepositions | tense | agreement | word choice | punctuation | capitalization | clarity | grammar | other",
+              "before": "mistaken phrase",
+              "after": "corrected phrase",
+              "pattern": "short reusable habit name",
+              "explanation": "日本語で短く"
+            }
+          ]
+        }
+
+        ## SOURCE TEXT
+        \(text)
         """
     }
 

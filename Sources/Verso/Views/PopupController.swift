@@ -6,6 +6,7 @@ final class PopupController {
     private let settings: AppSettings
     private let glossary: Glossary
     private let history: HistoryStore
+    private let writingMistakes: WritingMistakeStore
     private let usage: UsageTracker
     private let cache: TranslationCache
     private let network: NetworkMonitor
@@ -24,6 +25,7 @@ final class PopupController {
     private var altTask: Task<Void, Never>?
     private var furiganaTask: Task<Void, Never>?
     private var chatTask: Task<Void, Never>?
+    private var writingTask: Task<Void, Never>?
 
     private var activeLangPair: LanguageDetector.Pair?
     private var activeOriginal: String = ""
@@ -35,10 +37,12 @@ final class PopupController {
     private var conversationHistory: [(original: String, translation: String)] = []
 
     init(settings: AppSettings, glossary: Glossary, history: HistoryStore,
+         writingMistakes: WritingMistakeStore,
          usage: UsageTracker, cache: TranslationCache, network: NetworkMonitor) {
         self.settings = settings
         self.glossary = glossary
         self.history = history
+        self.writingMistakes = writingMistakes
         self.usage = usage
         self.cache = cache
         self.network = network
@@ -80,6 +84,8 @@ final class PopupController {
         activeLangPair = pair
 
         let deepLConfigured = !settings.deeplApiKey.isEmpty
+        let showDeepLResult = settings.shouldShowDeepLResult(deepLConfigured: deepLConfigured)
+        let showAIResult = settings.shouldShowAIResult(deepLConfigured: deepLConfigured)
 
         close(restoreFocus: false, preserveConversation: settings.stayOpen)
         let useLocalAI = activeUseLocalAI
@@ -97,6 +103,8 @@ final class PopupController {
             allowsCloudPro: !useLocalAI,
             canStartLocalAIServer: useLocalAI,
             localAIStartButtonTitle: LocalAIAppLauncher.buttonTitle(for: settings.selectedLocalAIBackend),
+            showAIResult: showAIResult,
+            showDeepLResult: showDeepLResult,
             onInsert: { [weak self] t in self?.insertAndClose(t) },
             onCopy: { [weak self] t in
                 NSPasteboard.general.clearContents()
@@ -109,6 +117,7 @@ final class PopupController {
             },
             onClose: { [weak self] in self?.close(restoreFocus: true) },
             onRefine: { [weak self] instr in self?.refine(instruction: instr) },
+            onCorrectOwnWriting: { [weak self] in self?.correctOwnWriting() },
             onAddGlossary: { [weak self] term, t, preserve in
                 self?.glossary.add(term: term, translation: t, preserveAsIs: preserve)
                 self?.currentViewModel?.showToast("用語を追加: \(term)")
@@ -164,12 +173,23 @@ final class PopupController {
         let cacheKey = makeCacheKey(text: originalText, pair: pair)
 
         if settings.cacheEnabled, let entry = cache.get(cacheKey) {
-            if let g = entry.geminiTranslation { viewModel.geminiState = .ok(g) }
-            if let d = entry.deepLTranslation, deepLConfigured { viewModel.deepLState = .ok(d) }
-            if entry.geminiTranslation != nil && (!deepLConfigured || entry.deepLTranslation != nil) {
+            if showAIResult, let g = entry.geminiTranslation { viewModel.geminiState = .ok(g) }
+            if showDeepLResult, let d = entry.deepLTranslation { viewModel.deepLState = .ok(d) }
+
+            let hasVisibleAI = !showAIResult || entry.geminiTranslation != nil
+            let hasVisibleDeepL = !showDeepLResult || entry.deepLTranslation != nil
+            let hasAnyVisibleTranslation =
+                (showAIResult && entry.geminiTranslation != nil)
+                || (showDeepLResult && entry.deepLTranslation != nil)
+
+            if hasVisibleAI && hasVisibleDeepL && hasAnyVisibleTranslation {
                 viewModel.showToast("⚡ キャッシュ")
                 if !settings.privacyMode {
-                    recordHistoryIfNeeded(translation: entry.geminiTranslation ?? "", pair: pair, appHint: sourceApp?.localizedName)
+                    recordHistoryIfNeeded(
+                        translation: viewModel.primaryInsertText,
+                        pair: pair,
+                        appHint: sourceApp?.localizedName
+                    )
                 }
                 return
             }
@@ -204,7 +224,7 @@ final class PopupController {
         let useLocalAI = shouldUseLocalAIForCurrentRequest
 
         // DeepL preview
-        if !settings.deeplApiKey.isEmpty && network.isOnline {
+        if viewModel.showDeepLPanel && network.isOnline {
             deepLTask = Task { @MainActor [weak self, weak viewModel] in
                 guard let self = self, let viewModel = viewModel else { return }
                 do {
@@ -219,14 +239,19 @@ final class PopupController {
                     if self.settings.cacheEnabled {
                         self.cache.set(cacheKey, deepLTranslation: preview)
                     }
+                    if !viewModel.showAIPanel, !self.settings.privacyMode {
+                        self.recordHistoryIfNeeded(translation: preview, pair: pair, appHint: appHint)
+                    }
                 } catch {
                     if Task.isCancelled { return }
                     viewModel.deepLState = .failed(error.localizedDescription)
                 }
             }
-        } else if !settings.deeplApiKey.isEmpty {
+        } else if viewModel.showDeepLPanel {
             viewModel.deepLState = .failed("オフライン中。DeepLプレビューは停止しています。")
         }
+
+        guard viewModel.showAIPanel else { return }
 
         // Primary AI — Gemini streaming, or local AI when offline/local mode is selected.
         geminiTask = Task { @MainActor [weak self, weak viewModel] in
@@ -451,6 +476,106 @@ final class PopupController {
         }
     }
 
+    private func correctOwnWriting() {
+        guard let vm = currentViewModel,
+              vm.canCorrectOwnWriting else {
+            currentViewModel?.showToast("自分で書いた英文の時だけ使ってください", duration: 3.0)
+            return
+        }
+
+        let source = vm.originalText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty else { return }
+
+        let snapshot = vm.geminiText
+        vm.undoStack.append(snapshot)
+        vm.isRefining = true
+        vm.showToast("英文を添削中…", duration: 2.0)
+
+        let useLocalAI = shouldUseLocalAIForCurrentRequest
+        writingTask?.cancel()
+        writingTask = Task { @MainActor [weak self, weak vm] in
+            guard let self = self, let vm = vm else { return }
+            do {
+                let result: (result: WritingCorrectionResult, usage: GeminiUsage?)
+                var actualUseLocalAI = useLocalAI
+
+                if useLocalAI {
+                    result = try await self.localAIClient.correctOwnWriting(
+                        text: source,
+                        context: self.activePromptContext(),
+                        backend: self.settings.selectedLocalAIBackend,
+                        endpoint: self.settings.localAIEndpoint,
+                        model: self.settings.localAIModel
+                    )
+                } else {
+                    do {
+                        result = try await self.geminiClient.correctOwnWriting(
+                            text: source,
+                            context: self.activePromptContext(),
+                            model: self.settings.model,
+                            apiKey: self.settings.apiKey
+                        )
+                    } catch {
+                        guard self.canFallbackToLocalAI(after: error, currentlyUsingLocalAI: useLocalAI) else {
+                            throw error
+                        }
+                        actualUseLocalAI = true
+                        self.switchActiveProviderToLocalAI(vm, message: "添削をLocal AIで継続")
+                        result = try await self.localAIClient.correctOwnWriting(
+                            text: source,
+                            context: self.activePromptContext(),
+                            backend: self.settings.selectedLocalAIBackend,
+                            endpoint: self.settings.localAIEndpoint,
+                            model: self.settings.localAIModel
+                        )
+                    }
+                }
+
+                if Task.isCancelled {
+                    vm.isRefining = false
+                    return
+                }
+
+                let corrected = result.result.correctedText
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                vm.geminiState = .ok(corrected.isEmpty ? source : corrected)
+                vm.isRefining = false
+
+                if let u = result.usage {
+                    self.usage.record(
+                        model: self.settings.modelKey(useLocalAI: actualUseLocalAI),
+                        promptTokens: u.promptTokens,
+                        responseTokens: u.responseTokens
+                    )
+                }
+
+                if result.result.mistakes.isEmpty {
+                    vm.showToast("添削しました · 目立つミスなし")
+                } else if self.settings.privacyMode {
+                    vm.showToast("添削しました · Privacy mode のため記録なし", duration: 3.0)
+                } else {
+                    let count = self.writingMistakes.record(
+                        sourceText: source,
+                        correctedText: corrected.isEmpty ? source : corrected,
+                        issues: result.result.mistakes,
+                        sourceApp: self.sourceApp?.localizedName
+                    )
+                    vm.showToast("添削しました · ミス傾向\(count)件を記録", duration: 3.0)
+                }
+            } catch {
+                if Task.isCancelled {
+                    vm.isRefining = false
+                    return
+                }
+                vm.isRefining = false
+                if vm.undoStack.last == snapshot {
+                    vm.undoStack.removeLast()
+                }
+                vm.showToast("添削失敗: \(error.localizedDescription)", duration: 4.0)
+            }
+        }
+    }
+
     private func undoLastRefine() {
         guard let vm = currentViewModel, !vm.undoStack.isEmpty else { return }
         let prev = vm.undoStack.removeLast()
@@ -460,7 +585,7 @@ final class PopupController {
     private func retry() {
         guard let vm = currentViewModel, let pair = activeLangPair else { return }
         let cacheKey = makeCacheKey(text: activeOriginal, pair: pair)
-        vm.geminiState = .loading
+        if vm.showAIPanel { vm.geminiState = .loading }
         if vm.showDeepLPanel { vm.deepLState = .loading }
         startInitialTranslations(viewModel: vm, cacheKey: cacheKey)
     }
@@ -834,5 +959,6 @@ final class PopupController {
         altTask?.cancel(); altTask = nil
         furiganaTask?.cancel(); furiganaTask = nil
         chatTask?.cancel(); chatTask = nil
+        writingTask?.cancel(); writingTask = nil
     }
 }

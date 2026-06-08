@@ -5,9 +5,11 @@ struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var glossary: Glossary
     @EnvironmentObject var history: HistoryStore
+    @EnvironmentObject var writingMistakes: WritingMistakeStore
     @EnvironmentObject var usage: UsageTracker
     @State private var showApiKey: Bool = false
     @State private var isConfirmingClearUsage: Bool = false
+    @State private var isConfirmingClearWritingMistakes: Bool = false
     @State private var isConfirmingResetContext: Bool = false
     @State private var isTestingLocalAI: Bool = false
     @State private var localAITestMessage: String?
@@ -36,6 +38,9 @@ struct SettingsView: View {
 
             GlossaryTabView(glossary: glossary)
                 .tabItem { Label(L10n.tabGlossary, systemImage: "book") }
+
+            writingTab
+                .tabItem { Label("Writing", systemImage: "checkmark.seal") }
 
             usageTab
                 .tabItem { Label(L10n.tabUsage, systemImage: "chart.bar") }
@@ -112,6 +117,16 @@ struct SettingsView: View {
 
                 Group {
                     Text("Behavior").font(.headline)
+                    Picker("表示する結果", selection: $settings.providerDisplayMode) {
+                        ForEach(ProviderDisplayMode.allCases) { mode in
+                            Text(mode.title).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    Text(settings.selectedProviderDisplayMode.subtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
                     Toggle("📌 Stay open after action (popupを自動で閉じない)", isOn: $settings.stayOpen)
                     Toggle("🔒 Privacy mode (履歴に保存しない)", isOn: $settings.privacyMode)
                     Toggle("⚡ 翻訳キャッシュを使う (同じ文章は即時)", isOn: $settings.cacheEnabled)
@@ -748,6 +763,121 @@ struct SettingsView: View {
         } message: {
             Text("This replaces your current custom tone, terminology notes, and translation preferences.")
         }
+    }
+
+    // MARK: - Writing
+
+    private var writingTab: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("自分の英文ミス傾向").font(.headline)
+                    Text("ポップアップの「添削」は、自分で書いた英文だけを直して、よくあるミスをここに蓄積します。")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Button("Clear", role: .destructive) {
+                    isConfirmingClearWritingMistakes = true
+                }
+                .controlSize(.small)
+                .disabled(writingMistakes.entries.isEmpty)
+            }
+
+            HStack(spacing: 14) {
+                writingStat(title: "記録", value: "\(writingMistakes.entries.count)")
+                writingStat(title: "傾向", value: "\(writingMistakes.summaries().count)")
+            }
+
+            if writingMistakes.entries.isEmpty {
+                Spacer()
+                VStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal")
+                        .font(.system(size: 36))
+                        .foregroundColor(.secondary)
+                    Text("まだ記録はありません")
+                        .font(.headline)
+                    Text("英文を選択して翻訳ポップアップを開き、「添削」を押すとここに蓄積されます。")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                Spacer()
+            } else {
+                List {
+                    ForEach(writingMistakes.summaries()) { summary in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(summary.title)
+                                    .font(.headline)
+                                Text(summary.categoryLabel)
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.accentColor.opacity(0.12))
+                                    .cornerRadius(5)
+                                Spacer()
+                                Text("\(summary.count)回")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(summary.sampleBefore)
+                                    .foregroundColor(.red)
+                                    .strikethrough()
+                                Image(systemName: "arrow.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Text(summary.sampleAfter)
+                                    .foregroundColor(.green)
+                            }
+                            .font(.callout)
+                            .textSelection(.enabled)
+
+                            if !summary.sampleExplanation.isEmpty {
+                                Text(summary.sampleExplanation)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                }
+            }
+        }
+        .padding()
+        .confirmationDialog(
+            "Clear writing mistake history?",
+            isPresented: $isConfirmingClearWritingMistakes
+        ) {
+            Button("Clear writing mistakes", role: .destructive) {
+                writingMistakes.clear()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("添削で蓄積したミス傾向だけを削除します。翻訳履歴や用語集は残ります。")
+        }
+    }
+
+    private func writingStat(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.title3)
+                .fontWeight(.semibold)
+        }
+        .frame(width: 120, alignment: .leading)
+        .padding(10)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color(NSColor.separatorColor), lineWidth: 1)
+        )
     }
 
     // MARK: - Usage

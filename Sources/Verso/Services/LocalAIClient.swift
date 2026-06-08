@@ -407,6 +407,30 @@ final class LocalAIClient {
         return (output, nil)
     }
 
+    func correctOwnWriting(
+        text: String,
+        context: String?,
+        backend: LocalAIBackend,
+        endpoint: String,
+        model: String
+    ) async throws -> (result: WritingCorrectionResult, usage: GeminiUsage?) {
+        let prompt = GeminiClient.buildOwnWritingCorrectionPrompt(text: text, context: context)
+        let output = try await complete(
+            prompt: prompt,
+            systemPrompt: Self.jsonOnlySystemPrompt,
+            backend: backend,
+            endpoint: endpoint,
+            model: model,
+            timeout: timeoutForTextLength(text.count)
+        )
+        do {
+            let parsed = try WritingCorrectionResult.parse(from: output, fallbackText: text)
+            return (parsed, nil)
+        } catch {
+            throw LocalAIError.invalidResponse
+        }
+    }
+
     func extractGlossaryDiff(
         originalText: String,
         modelTranslation: String,

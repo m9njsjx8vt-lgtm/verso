@@ -107,6 +107,33 @@ enum TranslationProvider: String, CaseIterable, Identifiable {
     }
 }
 
+enum ProviderDisplayMode: String, CaseIterable, Identifiable {
+    case both
+    case aiOnly
+    case deepLOnly
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .both: return "AI + DeepL"
+        case .aiOnly: return "AIのみ"
+        case .deepLOnly: return "DeepLのみ"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .both:
+            return "AI翻訳とDeepLプレビューを両方表示します。"
+        case .aiOnly:
+            return "Gemini / Local AI の結果だけを表示します。DeepL APIは呼びません。"
+        case .deepLOnly:
+            return "DeepLの結果だけを表示します。DeepLキーが空の時はAI表示に戻します。"
+        }
+    }
+}
+
 enum LocalAIBackend: String, CaseIterable, Identifiable, Sendable {
     case ollama
     case openAICompatible
@@ -195,6 +222,10 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(translationStyle, forKey: "translationStyle") }
     }
 
+    @Published var providerDisplayMode: String {
+        didSet { UserDefaults.standard.set(providerDisplayMode, forKey: "providerDisplayMode") }
+    }
+
     /// What target to use when source is detected as English.
     @Published var targetWhenEnglish: String {
         didSet { UserDefaults.standard.set(targetWhenEnglish, forKey: "targetWhenEnglish") }
@@ -265,6 +296,9 @@ final class AppSettings: ObservableObject {
         let savedStyle = d.string(forKey: "translationStyle") ?? TranslationStyle.directBusiness.rawValue
         self.translationStyle = TranslationStyle(rawValue: savedStyle)?.rawValue
             ?? TranslationStyle.directBusiness.rawValue
+        let savedDisplayMode = d.string(forKey: "providerDisplayMode") ?? ProviderDisplayMode.both.rawValue
+        self.providerDisplayMode = ProviderDisplayMode(rawValue: savedDisplayMode)?.rawValue
+            ?? ProviderDisplayMode.both.rawValue
         self.targetWhenEnglish = d.string(forKey: "targetWhenEnglish") ?? "JA"
         self.targetWhenOther = d.string(forKey: "targetWhenOther") ?? "EN"
         self.preserveMarkdownAndCode = d.object(forKey: "preserveMarkdownAndCode") as? Bool ?? true
@@ -310,6 +344,7 @@ final class AppSettings: ObservableObject {
             "localAIEndpoint",
             "localAIModel",
             "model",
+            "providerDisplayMode",
             "translationStyle",
             "targetWhenEnglish",
             "targetWhenOther",
@@ -373,6 +408,18 @@ final class AppSettings: ObservableObject {
 
     var selectedTranslationStyle: TranslationStyle {
         TranslationStyle(rawValue: translationStyle) ?? .directBusiness
+    }
+
+    var selectedProviderDisplayMode: ProviderDisplayMode {
+        ProviderDisplayMode(rawValue: providerDisplayMode) ?? .both
+    }
+
+    func shouldShowAIResult(deepLConfigured: Bool) -> Bool {
+        selectedProviderDisplayMode != .deepLOnly || !deepLConfigured
+    }
+
+    func shouldShowDeepLResult(deepLConfigured: Bool) -> Bool {
+        deepLConfigured && selectedProviderDisplayMode != .aiOnly
     }
 
     func promptContext(additionalBlocks: [String?] = []) -> String {
