@@ -57,6 +57,7 @@ Verso defaults to **Local AI** for offline-first personal use. It can translate 
 - Settings auto-checks the saved endpoint when Local AI is selected; if that fails, Verso tries local server discovery automatically
 - Use **Refresh Models** to retry the current endpoint manually
 - Use **Test Local AI** in Settings to confirm the endpoint/model before relying on offline translation
+- If a Local AI translation fails, the popup offers **Start Ollama** / **Open LM Studio** and retries after launch
 - If Gemini is selected but the API key is blank, Verso falls back to Local AI for that request
 - If Gemini is selected but the Mac is offline, Verso also falls back to Local AI for that request
 - DeepL preview remains cloud-only and will show as unavailable while offline

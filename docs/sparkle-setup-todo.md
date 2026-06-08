@@ -56,6 +56,7 @@ curl https://m9njsjx8vt-lgtm.github.io/verso/appcast.xml
 - `verso://settings` が開く
 - `⌘C×2`, `⌘⇧T`, `⌥⇧C` が落ちずに動く
 - Local AI が `Test Local AI` で通る
+- Local AI 失敗時、翻訳ポップアップから `Start Ollama` / `Open LM Studio` で復旧できる
 - DeepL APIキーなしでもオンボーディングを完了できる
 
 配布準備では、追加で以下が必要:

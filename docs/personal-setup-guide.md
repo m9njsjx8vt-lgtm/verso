@@ -96,8 +96,8 @@ Use **Settings → Glossary** for terms that should always translate the same wa
 
 ### Local AI cannot connect
 
-1. Settings → General → AI Engine → Local AI.
-2. Press **Start Ollama** or **Open LM Studio**.
+1. In a failed translation popup, press **Start Ollama** or **Open LM Studio**; Verso retries after launch.
+2. If it still fails, open Settings → General → AI Engine → Local AI.
 3. Press **Detect Local AI**. If you typed a custom endpoint, press **Refresh Models**.
 4. Press **Test Local AI**.
 
