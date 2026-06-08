@@ -66,6 +66,26 @@ struct LocalAIModelInfo: Identifiable, Equatable {
     let sizeBytes: Int64?
 
     var id: String { name }
+
+    static func recommendedReplacement(
+        from models: [LocalAIModelInfo],
+        currentModel: String
+    ) -> LocalAIModelInfo? {
+        let trimmed = currentModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, models.contains(where: { $0.name == trimmed }) {
+            return nil
+        }
+
+        if let defaultModel = models.first(where: { $0.name == LocalAIBackend.defaultModel }) {
+            return defaultModel
+        }
+
+        let nonChatHints = ["embed", "embedding", "bge-", "rerank"]
+        return models.first { model in
+            let lowercased = model.name.lowercased()
+            return !nonChatHints.contains { lowercased.contains($0) }
+        } ?? models.first
+    }
 }
 
 final class LocalAIClient {

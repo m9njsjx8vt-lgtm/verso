@@ -444,9 +444,12 @@ struct OnboardingView: View {
                     let currentModel = localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                     if models.isEmpty {
                         localAIModelListMessage = "モデルが見つかりません"
-                    } else if let first = models.first, currentModel.isEmpty || !models.contains(where: { $0.name == currentModel }) {
-                        localModelDraft = first.name
-                        localAIModelListMessage = "\(models.count) models found · \(first.name) を選択"
+                    } else if let recommended = LocalAIModelInfo.recommendedReplacement(
+                        from: models,
+                        currentModel: currentModel
+                    ) {
+                        localModelDraft = recommended.name
+                        localAIModelListMessage = "\(models.count) models found · \(recommended.name) を選択"
                     } else {
                         localAIModelListMessage = "\(models.count) models found"
                     }
