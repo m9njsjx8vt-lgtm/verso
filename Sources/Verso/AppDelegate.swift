@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popupController: PopupController?
     private var ocrCoordinator: OCRCoordinator?
     private var historyWindowController: HistoryWindowController?
+    private var settingsWindowController: SettingsWindowController?
     private var onboardingWindowController: OnboardingWindowController?
     private var workspaceWindowController: WorkspaceWindowController?
     private var cancellables: Set<AnyCancellable> = []
@@ -55,6 +56,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             history: history,
             workspaceController: workspaceWindowController
         )
+        settingsWindowController = SettingsWindowController(
+            settings: settings,
+            glossary: glossary,
+            history: history,
+            writingMistakes: writingMistakes,
+            usage: usage
+        )
 
         setupCmdCHotkey()
         setupAuxHotkeys()
@@ -67,6 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: .versoLanguageChanged, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.rebuildStatusBarMenu() }
+        }
+        NotificationCenter.default.addObserver(
+            forName: .versoOpenSettingsRequested, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.openSettings() }
         }
         network.$isOnline
             .removeDuplicates()
@@ -107,22 +120,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func rebuildStatusBarMenu() {
         guard let item = statusItem else { return }
         let menu = NSMenu()
-        menu.addItem(.init(title: "\(L10n.menuTranslateClipboard)  ⌘⇧V",
-                           action: #selector(translateClipboard), keyEquivalent: ""))
-        menu.addItem(.init(title: "\(L10n.menuTranslateRegion)  ⌥⇧C",
-                           action: #selector(translateRegion), keyEquivalent: ""))
-        menu.addItem(.init(title: L10n.menuTranslateWindow,
-                           action: #selector(translateWindow), keyEquivalent: ""))
-        menu.addItem(.init(title: "\(L10n.menuOpenWorkspace)  ⌘⇧T",
-                           action: #selector(openWorkspace), keyEquivalent: ""))
-        menu.addItem(.init(title: "\(L10n.menuHistory)  ⌘⇧H",
-                           action: #selector(showHistory), keyEquivalent: ""))
+        menu.addItem(appMenuItem(title: "\(L10n.menuTranslateClipboard)  ⌘⇧V",
+                                 action: #selector(translateClipboard)))
+        menu.addItem(appMenuItem(title: "\(L10n.menuTranslateRegion)  ⌥⇧C",
+                                 action: #selector(translateRegion)))
+        menu.addItem(appMenuItem(title: L10n.menuTranslateWindow,
+                                 action: #selector(translateWindow)))
+        menu.addItem(appMenuItem(title: "\(L10n.menuOpenWorkspace)  ⌘⇧T",
+                                 action: #selector(openWorkspace)))
+        menu.addItem(appMenuItem(title: "\(L10n.menuHistory)  ⌘⇧H",
+                                 action: #selector(showHistory)))
         menu.addItem(.separator())
         let engineItem = NSMenuItem(title: aiEngineMenuTitle, action: nil, keyEquivalent: "")
         engineItem.isEnabled = false
         menu.addItem(engineItem)
-        let pauseItem = NSMenuItem(title: settings.paused ? L10n.menuResume : L10n.menuPause,
-                                   action: #selector(togglePause), keyEquivalent: "")
+        let pauseItem = appMenuItem(
+            title: settings.paused ? L10n.menuResume : L10n.menuPause,
+            action: #selector(togglePause)
+        )
         pauseItem.tag = 999
         menu.addItem(pauseItem)
         if let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
@@ -133,16 +148,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updateItem.target = updaterController
             menu.addItem(updateItem)
         }
-        menu.addItem(.init(title: L10n.menuSettings,
-                           action: #selector(openSettings), keyEquivalent: ","))
-        menu.addItem(.init(title: L10n.menuShowWelcome,
-                           action: #selector(showOnboarding), keyEquivalent: ""))
-        menu.addItem(.init(title: L10n.menuCheckAccessibility,
-                           action: #selector(recheckAccessibility), keyEquivalent: ""))
+        menu.addItem(appMenuItem(title: L10n.menuSettings,
+                                 action: #selector(openSettings),
+                                 keyEquivalent: ","))
+        menu.addItem(appMenuItem(title: L10n.menuShowWelcome,
+                                 action: #selector(showOnboarding)))
+        menu.addItem(appMenuItem(title: L10n.menuCheckAccessibility,
+                                 action: #selector(recheckAccessibility)))
         menu.addItem(.separator())
         menu.addItem(.init(title: L10n.menuQuit,
                            action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
+    }
+
+    private func appMenuItem(
+        title: String,
+        action: Selector,
+        keyEquivalent: String = ""
+    ) -> NSMenuItem {
+        let menuItem = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
+        menuItem.target = self
+        return menuItem
     }
 
     private var aiEngineMenuTitle: String {
@@ -267,12 +293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
-        if #available(macOS 14, *) {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        } else {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
+        settingsWindowController?.show()
     }
 
     @objc private func recheckAccessibility() {
@@ -352,4 +373,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popupController?.show(originalText: text)
         }
     }
+}
+
+@MainActor
+final class SettingsWindowController: NSObject, NSWindowDelegate {
+    private let settings: AppSettings
+    private let glossary: Glossary
+    private let history: HistoryStore
+    private let writingMistakes: WritingMistakeStore
+    private let usage: UsageTracker
+    private var window: NSWindow?
+
+    init(
+        settings: AppSettings,
+        glossary: Glossary,
+        history: HistoryStore,
+        writingMistakes: WritingMistakeStore,
+        usage: UsageTracker
+    ) {
+        self.settings = settings
+        self.glossary = glossary
+        self.history = history
+        self.writingMistakes = writingMistakes
+        self.usage = usage
+    }
+
+    func show() {
+        if let window {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let view = SettingsView()
+            .environmentObject(settings)
+            .environmentObject(glossary)
+            .environmentObject(history)
+            .environmentObject(writingMistakes)
+            .environmentObject(usage)
+
+        let host = NSHostingController(rootView: view)
+        let win = NSWindow(contentViewController: host)
+        win.title = "Verso — Settings"
+        win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        win.setContentSize(NSSize(width: 700, height: 600))
+        win.minSize = NSSize(width: 660, height: 560)
+        win.center()
+        win.isReleasedWhenClosed = false
+        win.delegate = self
+        window = win
+
+        NSApp.activate(ignoringOtherApps: true)
+        win.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        window = nil
+    }
+}
+
+extension Notification.Name {
+    static let versoOpenSettingsRequested = Notification.Name("versoOpenSettingsRequested")
 }

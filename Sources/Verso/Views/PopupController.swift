@@ -591,12 +591,7 @@ final class PopupController {
     }
 
     private func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
-        if #available(macOS 14, *) {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        } else {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
+        NotificationCenter.default.post(name: .versoOpenSettingsRequested, object: nil)
     }
 
     /// Re-translate using gemini-2.5-pro for higher quality
