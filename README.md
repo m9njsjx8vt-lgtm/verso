@@ -45,7 +45,7 @@ xcodegen && open Verso.xcodeproj
 
 ## Local AI / offline mode
 
-Verso can translate without internet access when **AI Engine** is set to **Local AI**.
+Verso defaults to **Local AI** for offline-first personal use, and can translate without internet access when **AI Engine** is set to **Local AI**.
 
 - Ollama default endpoint: `http://localhost:11434`
 - Default local model on Tomoro's machine: `huihui_ai/qwen3-abliterated:14b`

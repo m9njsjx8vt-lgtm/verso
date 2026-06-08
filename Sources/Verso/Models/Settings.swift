@@ -79,6 +79,8 @@ enum TranslationProvider: String, CaseIterable, Identifiable {
     case gemini
     case localAI
 
+    static let defaultProvider: TranslationProvider = .localAI
+
     var id: String { rawValue }
 
     var title: String {
@@ -108,6 +110,8 @@ enum TranslationProvider: String, CaseIterable, Identifiable {
 enum LocalAIBackend: String, CaseIterable, Identifiable {
     case ollama
     case openAICompatible
+
+    static let defaultModel = "huihui_ai/qwen3-abliterated:14b"
 
     var id: String { rawValue }
 
@@ -240,15 +244,15 @@ final class AppSettings: ObservableObject {
         let storedApiKey = SecretsStore.get("geminiApiKey") ?? ""
         self.apiKey = storedApiKey
         self.deeplApiKey = SecretsStore.get("deeplApiKey") ?? ""
-        let savedProvider = d.string(forKey: "translationProvider") ?? TranslationProvider.gemini.rawValue
+        let savedProvider = d.string(forKey: "translationProvider") ?? TranslationProvider.defaultProvider.rawValue
         self.translationProvider = TranslationProvider(rawValue: savedProvider)?.rawValue
-            ?? TranslationProvider.gemini.rawValue
+            ?? TranslationProvider.defaultProvider.rawValue
         let savedBackend = d.string(forKey: "localAIBackend") ?? LocalAIBackend.ollama.rawValue
         let resolvedBackend = LocalAIBackend(rawValue: savedBackend) ?? .ollama
         self.localAIBackend = resolvedBackend.rawValue
         let backend = resolvedBackend
         self.localAIEndpoint = d.string(forKey: "localAIEndpoint") ?? backend.defaultEndpoint
-        self.localAIModel = d.string(forKey: "localAIModel") ?? "huihui_ai/qwen3-abliterated:14b"
+        self.localAIModel = d.string(forKey: "localAIModel") ?? LocalAIBackend.defaultModel
         self.translatorContext = d.string(forKey: "translatorContext") ?? Self.defaultContext
         self.model = d.string(forKey: "model") ?? "gemini-2.5-flash-lite"
         let savedStyle = d.string(forKey: "translationStyle") ?? TranslationStyle.directBusiness.rawValue
@@ -267,7 +271,7 @@ final class AppSettings: ObservableObject {
     }
 
     var selectedTranslationProvider: TranslationProvider {
-        TranslationProvider(rawValue: translationProvider) ?? .gemini
+        TranslationProvider(rawValue: translationProvider) ?? TranslationProvider.defaultProvider
     }
 
     var selectedLocalAIBackend: LocalAIBackend {

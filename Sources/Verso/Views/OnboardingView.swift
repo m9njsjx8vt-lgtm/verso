@@ -5,10 +5,10 @@ struct OnboardingView: View {
     @State private var step: Int = 0
     @State private var apiKeyDraft: String = ""
     @State private var deepLDraft: String = ""
-    @State private var providerDraft: String = TranslationProvider.gemini.rawValue
+    @State private var providerDraft: String = TranslationProvider.defaultProvider.rawValue
     @State private var localBackendDraft: String = LocalAIBackend.ollama.rawValue
     @State private var localEndpointDraft: String = LocalAIBackend.ollama.defaultEndpoint
-    @State private var localModelDraft: String = "huihui_ai/qwen3-abliterated:14b"
+    @State private var localModelDraft: String = LocalAIBackend.defaultModel
     @State private var isTestingLocalAI: Bool = false
     @State private var localAITestMessage: String?
     @State private var localAITestSucceeded: Bool = false
