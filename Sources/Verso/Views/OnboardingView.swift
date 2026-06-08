@@ -15,9 +15,11 @@ struct OnboardingView: View {
     @State private var isLoadingLocalAIModels: Bool = false
     @State private var localAIModelListMessage: String?
     @State private var discoveredLocalAIModels: [LocalAIModelInfo] = []
+    @State private var discoveredLocalAIServers: [LocalAIServerDiscovery] = []
     @State private var localAIModelRefreshID = UUID()
     @State private var localAIAppLaunchMessage: String?
     @State private var localAIAppLaunchSucceeded: Bool = false
+    @State private var skipNextLocalAIBackendChange: Bool = false
 
     let onComplete: () -> Void
 
@@ -248,6 +250,10 @@ struct OnboardingView: View {
             }
             .pickerStyle(.menu)
             .onChange(of: localBackendDraft) { _ in
+                if skipNextLocalAIBackendChange {
+                    skipNextLocalAIBackendChange = false
+                    return
+                }
                 if localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     || LocalAIBackend.allCases.map(\.defaultEndpoint).contains(localEndpointDraft) {
                     localEndpointDraft = selectedLocalBackend.defaultEndpoint
@@ -306,9 +312,38 @@ struct OnboardingView: View {
                 .disabled(isLoadingLocalAIModels
                     || localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
+                Button {
+                    detectLocalAIModels()
+                } label: {
+                    Label(
+                        isLoadingLocalAIModels ? "Searching…" : "Detect Local AI",
+                        systemImage: "magnifyingglass"
+                    )
+                }
+                .disabled(isLoadingLocalAIModels)
+
                 if isLoadingLocalAIModels {
                     ProgressView()
                         .controlSize(.small)
+                }
+
+                if !discoveredLocalAIServers.isEmpty {
+                    Menu {
+                        ForEach(discoveredLocalAIServers) { discovery in
+                            Button {
+                                applyLocalAIDiscovery(discovery, messagePrefix: "選択")
+                            } label: {
+                                if discovery.backend == selectedLocalBackend
+                                    && discovery.endpoint == localEndpointDraft {
+                                    Label(serverMenuTitle(discovery), systemImage: "checkmark")
+                                } else {
+                                    Text(serverMenuTitle(discovery))
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Use Server", systemImage: "server.rack")
+                    }
                 }
 
                 if !discoveredLocalAIModels.isEmpty {
@@ -462,6 +497,13 @@ struct OnboardingView: View {
                     }
 
                     discoveredLocalAIModels = models
+                    discoveredLocalAIServers = [
+                        LocalAIServerDiscovery(
+                            backend: backend,
+                            endpoint: endpoint.trimmingCharacters(in: .whitespacesAndNewlines),
+                            models: models
+                        )
+                    ]
                     let currentModel = localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                     if models.isEmpty {
                         localAIModelListMessage = "モデルが見つかりません"
@@ -486,8 +528,65 @@ struct OnboardingView: View {
         }
     }
 
+    private func detectLocalAIModels() {
+        let requestID = UUID()
+
+        localAIModelRefreshID = requestID
+        isLoadingLocalAIModels = true
+        localAIModelListMessage = "ローカルAIを検索中…"
+        discoveredLocalAIModels = []
+        discoveredLocalAIServers = []
+
+        Task {
+            let discoveries = await LocalAIClient().discoverServers()
+            await MainActor.run {
+                guard localAIModelRefreshID == requestID else { return }
+                guard selectedProvider == .localAI else {
+                    isLoadingLocalAIModels = false
+                    return
+                }
+
+                discoveredLocalAIServers = discoveries
+                if let first = discoveries.first {
+                    applyLocalAIDiscovery(first, messagePrefix: "検出")
+                } else {
+                    localAIModelListMessage = "ローカルAIサーバーが見つかりません。Start Ollama / Open LM Studio の後に再試行してください。"
+                    isLoadingLocalAIModels = false
+                }
+            }
+        }
+    }
+
+    private func applyLocalAIDiscovery(
+        _ discovery: LocalAIServerDiscovery,
+        messagePrefix: String
+    ) {
+        if localBackendDraft != discovery.backend.rawValue {
+            skipNextLocalAIBackendChange = true
+            localBackendDraft = discovery.backend.rawValue
+        }
+        localEndpointDraft = discovery.endpoint
+        discoveredLocalAIModels = discovery.models
+
+        let currentModel = localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let recommended = LocalAIModelInfo.recommendedReplacement(
+            from: discovery.models,
+            currentModel: currentModel
+        ) {
+            localModelDraft = recommended.name
+        }
+
+        let selectedModel = localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectedSuffix = selectedModel.isEmpty ? "" : " · \(selectedModel) を選択"
+        localAIModelListMessage = "\(messagePrefix): \(discovery.displayTitle) · モデル\(discovery.models.count)件\(selectedSuffix)"
+        localAITestMessage = nil
+        localAITestSucceeded = false
+        isLoadingLocalAIModels = false
+    }
+
     private func resetLocalAIModelDiscovery() {
         discoveredLocalAIModels = []
+        discoveredLocalAIServers = []
         localAIModelListMessage = nil
         resetLocalAITestResult()
     }
@@ -564,6 +663,10 @@ struct OnboardingView: View {
         formatter.allowedUnits = [.useGB, .useMB]
         formatter.countStyle = .file
         return "\(model.name)  ·  \(formatter.string(fromByteCount: size))"
+    }
+
+    private func serverMenuTitle(_ discovery: LocalAIServerDiscovery) -> String {
+        "\(discovery.displayTitle)  ·  \(discovery.models.count) models"
     }
 }
 

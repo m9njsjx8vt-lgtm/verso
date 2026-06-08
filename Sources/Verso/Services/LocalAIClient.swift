@@ -61,7 +61,7 @@ enum LocalAIError: LocalizedError {
     }
 }
 
-struct LocalAIModelInfo: Identifiable, Equatable {
+struct LocalAIModelInfo: Identifiable, Equatable, Sendable {
     let name: String
     let sizeBytes: Int64?
 
@@ -88,14 +88,30 @@ struct LocalAIModelInfo: Identifiable, Equatable {
     }
 }
 
+struct LocalAIServerDiscovery: Identifiable, Equatable, Sendable {
+    let backend: LocalAIBackend
+    let endpoint: String
+    let models: [LocalAIModelInfo]
+
+    var id: String { "\(backend.rawValue)|\(endpoint)" }
+
+    var displayTitle: String {
+        let compactEndpoint = endpoint
+            .replacingOccurrences(of: "http://", with: "")
+            .replacingOccurrences(of: "https://", with: "")
+        return "\(backend.title) · \(compactEndpoint)"
+    }
+}
+
 final class LocalAIClient {
 
     func listModels(
         backend: LocalAIBackend,
-        endpoint: String
+        endpoint: String,
+        timeout: TimeInterval = 15
     ) async throws -> [LocalAIModelInfo] {
         let url = try modelsURL(for: backend, rawEndpoint: endpoint)
-        var request = URLRequest(url: url, timeoutInterval: 15)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "GET"
 
         let data: Data
@@ -122,6 +138,43 @@ final class LocalAIClient {
             return try parseOllamaModels(data)
         case .openAICompatible:
             return try parseOpenAICompatibleModels(data)
+        }
+    }
+
+    func discoverServers(timeout: TimeInterval = 2.5) async -> [LocalAIServerDiscovery] {
+        await withTaskGroup(of: (Int, LocalAIServerDiscovery)?.self) { group in
+            for (index, candidate) in Self.discoveryCandidates.enumerated() {
+                group.addTask {
+                    do {
+                        let models = try await LocalAIClient().listModels(
+                            backend: candidate.backend,
+                            endpoint: candidate.endpoint,
+                            timeout: timeout
+                        )
+                        guard !models.isEmpty else { return nil }
+                        return (
+                            index,
+                            LocalAIServerDiscovery(
+                                backend: candidate.backend,
+                                endpoint: candidate.endpoint,
+                                models: models
+                            )
+                        )
+                    } catch {
+                        return nil
+                    }
+                }
+            }
+
+            var discoveries: [(Int, LocalAIServerDiscovery)] = []
+            for await discovery in group {
+                if let discovery {
+                    discoveries.append(discovery)
+                }
+            }
+            return discoveries
+                .sorted { $0.0 < $1.0 }
+                .map(\.1)
         }
     }
 
@@ -719,4 +772,17 @@ final class LocalAIClient {
     private func timeoutForTextLength(_ count: Int) -> TimeInterval {
         min(180.0, max(20.0, 20.0 + Double(count) / 120.0))
     }
+
+    private static let discoveryCandidates: [(backend: LocalAIBackend, endpoint: String)] = [
+        (.ollama, "http://localhost:11434"),
+        (.ollama, "http://127.0.0.1:11434"),
+        (.openAICompatible, "http://localhost:1234/v1"),
+        (.openAICompatible, "http://127.0.0.1:1234/v1"),
+        (.openAICompatible, "http://localhost:8080/v1"),
+        (.openAICompatible, "http://127.0.0.1:8080/v1"),
+        (.openAICompatible, "http://localhost:8000/v1"),
+        (.openAICompatible, "http://127.0.0.1:8000/v1"),
+        (.openAICompatible, "http://localhost:5001/v1"),
+        (.openAICompatible, "http://127.0.0.1:5001/v1")
+    ]
 }

@@ -107,7 +107,7 @@ enum TranslationProvider: String, CaseIterable, Identifiable {
     }
 }
 
-enum LocalAIBackend: String, CaseIterable, Identifiable {
+enum LocalAIBackend: String, CaseIterable, Identifiable, Sendable {
     case ollama
     case openAICompatible
 
