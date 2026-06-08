@@ -78,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor [weak self] in
             for await _ in NotificationCenter.default.notifications(named: UserDefaults.didChangeNotification) {
                 self?.refreshStatusBarIcon()
+                self?.rebuildStatusBarMenu()
             }
         }
     }
@@ -105,6 +106,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.init(title: "\(L10n.menuHistory)  ⌘⇧H",
                            action: #selector(showHistory), keyEquivalent: ""))
         menu.addItem(.separator())
+        let engineItem = NSMenuItem(title: aiEngineMenuTitle, action: nil, keyEquivalent: "")
+        engineItem.isEnabled = false
+        menu.addItem(engineItem)
         let pauseItem = NSMenuItem(title: settings.paused ? L10n.menuResume : L10n.menuPause,
                                    action: #selector(togglePause), keyEquivalent: "")
         pauseItem.tag = 999
@@ -127,6 +131,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.init(title: L10n.menuQuit,
                            action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
+    }
+
+    private var aiEngineMenuTitle: String {
+        let model = settings.usesLocalAI ? settings.localAIModel : settings.model
+        return cappedMenuTitle("AI: \(settings.primaryProviderTitle) · \(compactModelName(model))")
+    }
+
+    private func compactModelName(_ raw: String) -> String {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let slash = value.lastIndex(of: "/") {
+            value = String(value[value.index(after: slash)...])
+        }
+        for removable in ["gemini-", "-abliterated", "-thinking", "-q4_K_M", "_q4_K_M"] {
+            value = value.replacingOccurrences(of: removable, with: "")
+        }
+        value = value
+            .replacingOccurrences(of: ":", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? L10n.t("Not set", "未設定") : value
+    }
+
+    private func cappedMenuTitle(_ title: String) -> String {
+        guard title.count > 30 else { return title }
+        return String(title.prefix(29)) + "…"
     }
 
     private func refreshStatusBarIcon() {
