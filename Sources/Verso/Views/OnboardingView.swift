@@ -51,12 +51,12 @@ struct OnboardingView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
-                Button(step == totalSteps - 1 ? "完了" : "次へ") {
+                Button(primaryButtonTitle) {
                     advance()
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(step == 1 && apiKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(!canAdvance)
             }
             .padding(20)
         }
@@ -65,6 +65,21 @@ struct OnboardingView: View {
             apiKeyDraft = settings.apiKey
             deepLDraft = settings.deeplApiKey
         }
+    }
+
+    private var primaryButtonTitle: String {
+        if step == totalSteps - 1 { return "完了" }
+        if step == 2 && deepLDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "スキップして次へ"
+        }
+        return "次へ"
+    }
+
+    private var canAdvance: Bool {
+        if step == 1 {
+            return !apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return true
     }
 
     private func advance() {
@@ -95,7 +110,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 8) {
                 FeatureRow(icon: "sparkles",
                            title: "AI翻訳 + 即時プレビュー",
-                           subtitle: "Gemini で精緻な訳、DeepL で即時プレビュー")
+                           subtitle: "Gemini は必須、DeepL プレビューは任意")
                 FeatureRow(icon: "book.closed.fill",
                            title: "用語を学習",
                            subtitle: "Glossary に登録した固有名詞は毎回正しく訳される")
@@ -156,6 +171,9 @@ struct OnboardingView: View {
                 .bold()
             Text("登録すると ⌘C×2 した瞬間に DeepL の即時プレビューが表示され、その後 Gemini が追いついて精緻版に置き換わります。")
                 .font(.body)
+                .foregroundColor(.secondary)
+            Text("DeepLなしでもGeminiだけで翻訳できます。空欄のままスキップして問題ありません。")
+                .font(.callout)
                 .foregroundColor(.secondary)
 
             Button {
