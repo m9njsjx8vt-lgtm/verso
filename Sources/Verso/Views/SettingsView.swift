@@ -652,8 +652,8 @@ struct SettingsView: View {
 
     private var usageTab: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("API 使用状況").font(.headline)
-            Text("Gemini APIのトークン使用量とコスト概算。free tier はカウントされてもコスト$0です。")
+            Text("Cloud API 使用状況").font(.headline)
+            Text("Geminiで発生したトークン使用量とコスト概算。Local AIの翻訳は端末内で処理されるためAPIコストは発生しません。")
                 .font(.caption).foregroundColor(.secondary)
 
             let today = usage.todayStats()
@@ -695,7 +695,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This resets local token and cost records. It does not delete translation history or API keys.")
+            Text("This resets cloud API usage estimates. It does not delete translation history or API keys.")
         }
     }
 
