@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var localAIAppLaunchMessage: String?
     @State private var localAIAppLaunchSucceeded: Bool = false
     @State private var skipNextLocalAIBackendChange: Bool = false
+    @State private var permissionRefreshID = UUID()
 
     var body: some View {
         TabView {
@@ -48,6 +49,9 @@ struct SettingsView: View {
         }
         .onChange(of: settings.translationProvider) { _ in
             refreshLocalAIModelsIfUseful(force: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            permissionRefreshID = UUID()
         }
     }
 
@@ -161,6 +165,7 @@ struct SettingsView: View {
                             if !AccessibilityService.isTrusted() {
                                 Button("Open Settings") {
                                     _ = AccessibilityService.checkAndPromptIfNeeded()
+                                    permissionRefreshID = UUID()
                                 }
                             }
                         }
@@ -175,10 +180,19 @@ struct SettingsView: View {
                             if !ScreenCapturePermissionService.isTrusted() {
                                 Button("Request") {
                                     _ = ScreenCapturePermissionService.requestIfNeeded()
+                                    permissionRefreshID = UUID()
                                 }
                             }
                         }
+
+                        Button {
+                            permissionRefreshID = UUID()
+                        } label: {
+                            Label("Refresh Permissions", systemImage: "arrow.clockwise")
+                        }
+                        .controlSize(.small)
                     }
+                    .id(permissionRefreshID)
                     .font(.system(size: 13))
                 }
 
