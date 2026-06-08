@@ -208,10 +208,7 @@ struct SettingsView: View {
                     || LocalAIBackend.allCases.map(\.defaultEndpoint).contains(settings.localAIEndpoint) {
                     settings.localAIEndpoint = settings.selectedLocalAIBackend.defaultEndpoint
                 }
-                discoveredLocalAIModels = []
-                localAIModelListMessage = nil
-                localAITestMessage = nil
-                localAITestSucceeded = false
+                resetLocalAIModelDiscovery()
                 localAIAppLaunchMessage = nil
                 localAIAppLaunchSucceeded = false
                 refreshLocalAIModelsIfUseful(force: true)
@@ -242,10 +239,16 @@ struct SettingsView: View {
             TextField(settings.selectedLocalAIBackend.endpointHelp, text: $settings.localAIEndpoint)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
+                .onChange(of: settings.localAIEndpoint) { _ in
+                    resetLocalAIModelDiscovery()
+                }
 
             TextField("Model name, e.g. huihui_ai/qwen3-abliterated:14b", text: $settings.localAIModel)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
+                .onChange(of: settings.localAIModel) { _ in
+                    resetLocalAITestResult()
+                }
 
             HStack(spacing: 8) {
                 Button {
@@ -362,9 +365,9 @@ struct SettingsView: View {
                         currentModel: currentModel
                     ) {
                         settings.localAIModel = recommended.name
-                        localAIModelListMessage = "\(models.count) models found · \(recommended.name) を選択"
+                        localAIModelListMessage = "モデル\(models.count)件を検出 · \(recommended.name) を選択"
                     } else {
-                        localAIModelListMessage = "\(models.count) models found"
+                        localAIModelListMessage = "モデル\(models.count)件を検出"
                     }
                     isLoadingLocalAIModels = false
                 }
@@ -376,6 +379,17 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func resetLocalAIModelDiscovery() {
+        discoveredLocalAIModels = []
+        localAIModelListMessage = nil
+        resetLocalAITestResult()
+    }
+
+    private func resetLocalAITestResult() {
+        localAITestMessage = nil
+        localAITestSucceeded = false
     }
 
     private func openLocalAIServerApp() {

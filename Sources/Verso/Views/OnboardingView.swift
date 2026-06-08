@@ -249,10 +249,7 @@ struct OnboardingView: View {
                     || LocalAIBackend.allCases.map(\.defaultEndpoint).contains(localEndpointDraft) {
                     localEndpointDraft = selectedLocalBackend.defaultEndpoint
                 }
-                discoveredLocalAIModels = []
-                localAIModelListMessage = nil
-                localAITestMessage = nil
-                localAITestSucceeded = false
+                resetLocalAIModelDiscovery()
                 localAIAppLaunchMessage = nil
                 localAIAppLaunchSucceeded = false
                 refreshLocalAIModelsIfUseful(force: true)
@@ -283,10 +280,16 @@ struct OnboardingView: View {
             TextField(selectedLocalBackend.endpointHelp, text: $localEndpointDraft)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
+                .onChange(of: localEndpointDraft) { _ in
+                    resetLocalAIModelDiscovery()
+                }
 
             TextField("Model name", text: $localModelDraft)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
+                .onChange(of: localModelDraft) { _ in
+                    resetLocalAITestResult()
+                }
 
             HStack(spacing: 8) {
                 Button {
@@ -464,9 +467,9 @@ struct OnboardingView: View {
                         currentModel: currentModel
                     ) {
                         localModelDraft = recommended.name
-                        localAIModelListMessage = "\(models.count) models found · \(recommended.name) を選択"
+                        localAIModelListMessage = "モデル\(models.count)件を検出 · \(recommended.name) を選択"
                     } else {
-                        localAIModelListMessage = "\(models.count) models found"
+                        localAIModelListMessage = "モデル\(models.count)件を検出"
                     }
                     isLoadingLocalAIModels = false
                 }
@@ -478,6 +481,17 @@ struct OnboardingView: View {
                 }
             }
         }
+    }
+
+    private func resetLocalAIModelDiscovery() {
+        discoveredLocalAIModels = []
+        localAIModelListMessage = nil
+        resetLocalAITestResult()
+    }
+
+    private func resetLocalAITestResult() {
+        localAITestMessage = nil
+        localAITestSucceeded = false
     }
 
     private func openLocalAIServerApp() {
