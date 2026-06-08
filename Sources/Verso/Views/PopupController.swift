@@ -198,10 +198,10 @@ final class PopupController {
         // Primary AI — Gemini streaming, or local AI when offline/local mode is selected.
         geminiTask = Task { @MainActor [weak self, weak viewModel] in
             guard let self = self, let viewModel = viewModel else { return }
+            let popupViewModel = viewModel
             do {
-                let result: (text: String, usage: GeminiUsage?)
-                if useLocalAI {
-                    result = try await self.localAIClient.translateStreaming(
+                func translateWithLocalAI() async throws -> (text: String, usage: GeminiUsage?) {
+                    try await self.localAIClient.translateStreaming(
                         text: originalText,
                         from: pair.sourceFull,
                         to: pair.targetFull,
@@ -212,39 +212,63 @@ final class PopupController {
                         backend: self.settings.selectedLocalAIBackend,
                         endpoint: self.settings.localAIEndpoint,
                         model: self.settings.localAIModel,
-                        onChunk: { [weak viewModel] partial in
+                        onChunk: { [weak popupViewModel] partial in
+                            guard let popupViewModel else { return }
                             await MainActor.run {
-                                viewModel?.geminiState = .ok(partial)
+                                popupViewModel.updateAITranslation(partial)
                             }
                         }
                     )
+                }
+
+                let result: (text: String, usage: GeminiUsage?)
+                var actualUseLocalAI = useLocalAI
+                if useLocalAI {
+                    result = try await translateWithLocalAI()
                 } else {
-                    result = try await self.geminiClient.translateStreaming(
-                        text: originalText,
-                        from: pair.sourceFull,
-                        to: pair.targetFull,
-                        context: extendedContext,
-                        glossary: self.glossary.formattedForPrompt(),
-                        sourceAppHint: appHint,
-                        preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode,
-                        model: self.settings.model,
-                        apiKey: self.settings.apiKey,
-                        onChunk: { [weak viewModel] partial in
-                            await MainActor.run {
-                                viewModel?.geminiState = .ok(partial)
+                    do {
+                        result = try await self.geminiClient.translateStreaming(
+                            text: originalText,
+                            from: pair.sourceFull,
+                            to: pair.targetFull,
+                            context: extendedContext,
+                            glossary: self.glossary.formattedForPrompt(),
+                            sourceAppHint: appHint,
+                            preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode,
+                            model: self.settings.model,
+                            apiKey: self.settings.apiKey,
+                            onChunk: { [weak popupViewModel] partial in
+                                guard let popupViewModel else { return }
+                                await MainActor.run {
+                                    popupViewModel.updateAITranslation(partial)
+                                }
                             }
+                        )
+                    } catch {
+                        guard self.canFallbackToLocalAI(after: error, currentlyUsingLocalAI: false) else {
+                            throw error
                         }
-                    )
+                        actualUseLocalAI = true
+                        viewModel.aiProviderTitle = self.settings.providerTitle(useLocalAI: true)
+                        viewModel.aiProviderIcon = self.settings.providerIcon(useLocalAI: true)
+                        viewModel.allowsCloudPro = false
+                        viewModel.geminiState = .loading
+                        viewModel.showToast("Geminiが使えないためLocal AIへ切替")
+                        result = try await translateWithLocalAI()
+                    }
                 }
                 if Task.isCancelled { return }
                 viewModel.geminiState = .ok(result.text)
                 if let u = result.usage {
-                    self.usage.record(model: self.settings.modelKey(useLocalAI: useLocalAI),
+                    self.usage.record(model: self.settings.modelKey(useLocalAI: actualUseLocalAI),
                                       promptTokens: u.promptTokens,
                                       responseTokens: u.responseTokens)
                 }
                 if self.settings.cacheEnabled {
-                    self.cache.set(cacheKey, geminiTranslation: result.text)
+                    let resolvedCacheKey = actualUseLocalAI == useLocalAI
+                        ? cacheKey
+                        : self.makeCacheKey(text: originalText, pair: pair, useLocalAI: actualUseLocalAI)
+                    self.cache.set(resolvedCacheKey, geminiTranslation: result.text)
                 }
                 if !self.settings.privacyMode {
                     self.recordHistoryIfNeeded(translation: result.text, pair: pair, appHint: appHint)
@@ -271,16 +295,27 @@ final class PopupController {
         return settings.promptContext(additionalBlocks: [conversationContext])
     }
 
-    private func makeCacheKey(text: String, pair: LanguageDetector.Pair) -> String {
-        cache.key(
+    private func makeCacheKey(
+        text: String,
+        pair: LanguageDetector.Pair,
+        useLocalAI: Bool? = nil
+    ) -> String {
+        let resolvedUseLocalAI = useLocalAI ?? shouldUseLocalAIForCurrentRequest
+        return cache.key(
             text: text,
             source: pair.sourceShort,
             target: pair.targetShort,
             glossary: glossary.formattedForPrompt(),
             context: activePromptContext(),
-            model: settings.modelKey(useLocalAI: shouldUseLocalAIForCurrentRequest),
+            model: settings.modelKey(useLocalAI: resolvedUseLocalAI),
             preserveMarkdownAndCode: settings.preserveMarkdownAndCode
         )
+    }
+
+    private func canFallbackToLocalAI(after error: Error, currentlyUsingLocalAI: Bool) -> Bool {
+        guard !currentlyUsingLocalAI else { return false }
+        guard let geminiError = error as? GeminiError else { return false }
+        return geminiError.canFallbackToLocalAI
     }
 
     private func refine(instruction: String) {

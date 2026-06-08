@@ -11,14 +11,14 @@ Verso (以下「本アプリ」) は Tomoro Iwasaki が個人開発する macOS 
 翻訳時の送信先は、ユーザーが選んだ AI Engine と任意設定により変わります。
 
 - **Local AI (Ollama / LM Studio / OpenAI互換ローカルサーバー)** — 既定。入力テキストは設定されたローカルEndpointへ送信されます。通常はこのMac内の `localhost` で処理され、インターネット接続は不要です。
-- **Google AI Studio (Gemini API)** — Gemini を選択した場合のみ、翻訳本体として送信されます。
+- **Google AI Studio (Gemini API)** — Gemini を選択し、Gemini APIキーが設定され、Macがオンラインの場合のみ、翻訳本体として送信されます。
   - https://policies.google.com/privacy
 - **DeepL API** (任意) — DeepL APIキーを設定し、オンラインの場合のみ、即時プレビューとして送信されます。
   - https://www.deepl.com/privacy
 
 GeminiやDeepLへの送信内容・利用条件は各サービスのプライバシーポリシーに従います。本アプリ開発者は中継サーバーを持たず、これらの通信を傍受・記録しません。
 
-Geminiを選択していてもMacがオフラインの場合、本アプリはそのリクエストのみLocal AIへフォールバックします。
+Geminiを選択していてもGemini APIキーが空欄の場合、またはMacがオフラインの場合、本アプリはそのリクエストのみLocal AIへフォールバックします。
 
 ## 2. ローカル保存データ
 

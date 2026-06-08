@@ -47,7 +47,7 @@ Detailed personal setup notes live in [`docs/personal-setup-guide.md`](docs/pers
 
 ## Local AI / offline mode
 
-Verso defaults to **Local AI** for offline-first personal use, and can translate without internet access when **AI Engine** is set to **Local AI**.
+Verso defaults to **Local AI** for offline-first personal use. It can translate without internet access when **AI Engine** is set to **Local AI**.
 
 - Ollama default endpoint: `http://localhost:11434`
 - Default local model on Tomoro's machine: `huihui_ai/qwen3-abliterated:14b`
@@ -55,7 +55,8 @@ Verso defaults to **Local AI** for offline-first personal use, and can translate
 - Settings can open LM Studio directly, or start `ollama serve` when the Ollama CLI is installed
 - Settings auto-checks installed local models when Local AI is selected; use **Refresh Models** to retry manually
 - Use **Test Local AI** in Settings to confirm the endpoint/model before relying on offline translation
-- If Gemini is selected but the Mac is offline, Verso falls back to Local AI for that request
+- If Gemini is selected but the API key is blank, Verso falls back to Local AI for that request
+- If Gemini is selected but the Mac is offline, Verso also falls back to Local AI for that request
 - DeepL preview remains cloud-only and will show as unavailable while offline
 
 ## Use

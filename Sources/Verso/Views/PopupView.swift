@@ -20,9 +20,9 @@ final class PopupViewModel: ObservableObject {
     @Published var stayOpen: Bool
     @Published var privacyMode: Bool
     @Published var conversationDepth: Int
-    let aiProviderTitle: String
-    let aiProviderIcon: String
-    let allowsCloudPro: Bool
+    @Published var aiProviderTitle: String
+    @Published var aiProviderIcon: String
+    @Published var allowsCloudPro: Bool
 
     // --- Grammar chat state ---
     @Published var chatMessages: [ChatMessage] = []
@@ -133,6 +133,10 @@ final class PopupViewModel: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
             if self?.toast == message { self?.toast = nil }
         }
+    }
+
+    func updateAITranslation(_ text: String) {
+        geminiState = .ok(text)
     }
 }
 

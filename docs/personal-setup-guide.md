@@ -31,7 +31,7 @@ Use Local AI when you want offline/private translation on this Mac.
 4. Use **Refresh Models** to retry manually, then choose the detected model.
 5. Press **Test Local AI**.
 
-Gemini is optional. Use it when internet access is available and cloud translation quality is preferred.
+Gemini is optional. Use it when internet access is available and cloud translation quality is preferred. If Gemini is selected but its API key is blank, Verso automatically uses Local AI for translation.
 
 ### Step 2: DeepL API Key
 
@@ -73,7 +73,8 @@ Use **Settings → Glossary** for terms that should always translate the same wa
 ## 5. Privacy
 
 - Local AI requests go to the local endpoint on this Mac, such as Ollama or LM Studio.
-- Gemini requests go to Google only when Gemini is selected and online.
+- Gemini requests go to Google only when Gemini is selected, online, and has an API key.
+- If Gemini is selected without an API key, or the Mac is offline, Verso uses Local AI for that request.
 - DeepL requests go to DeepL only when a DeepL key is configured and online.
 - Translation history stays on this Mac unless manually exported.
 - Turn on **Settings → Behavior → Privacy mode** to avoid saving history.

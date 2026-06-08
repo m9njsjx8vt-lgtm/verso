@@ -177,9 +177,10 @@ final class WorkspaceViewModel: ObservableObject {
                 }
             }
             do {
-                let result: (text: String, usage: GeminiUsage?)
-                if useLocalAI {
-                    result = try await self.localAIClient.translateStreaming(
+                func translateWithLocalAI(
+                    statusProviderTitle: String
+                ) async throws -> (text: String, usage: GeminiUsage?) {
+                    try await self.localAIClient.translateStreaming(
                         text: text,
                         from: pair.sourceFull,
                         to: pair.targetFull,
@@ -191,52 +192,80 @@ final class WorkspaceViewModel: ObservableObject {
                         endpoint: self.settings.localAIEndpoint,
                         model: self.settings.localAIModel,
                         onChunk: { [weak self] partial in
+                            guard let self else { return }
                             await MainActor.run {
-                                guard let self,
-                                      self.translationRunID == runID,
-                                      !Task.isCancelled
-                                else { return }
-                                self.resultText = partial
-                                self.statusText = "Translating · \(providerTitle) · \(self.sourceTargetSummary)"
-                            }
-                        }
-                    )
-                } else {
-                    result = try await self.geminiClient.translateStreaming(
-                        text: text,
-                        from: pair.sourceFull,
-                        to: pair.targetFull,
-                        context: context,
-                        glossary: glossaryPrompt,
-                        sourceAppHint: "Verso Workspace",
-                        preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode,
-                        model: self.settings.model,
-                        apiKey: self.settings.apiKey,
-                        onChunk: { [weak self] partial in
-                            await MainActor.run {
-                                guard let self,
-                                      self.translationRunID == runID,
-                                      !Task.isCancelled
-                                else { return }
-                                self.resultText = partial
-                                self.statusText = "Translating · \(providerTitle) · \(self.sourceTargetSummary)"
+                                self.applyTranslationChunk(
+                                    partial,
+                                    runID: runID,
+                                    statusProviderTitle: statusProviderTitle
+                                )
                             }
                         }
                     )
                 }
+
+                let result: (text: String, usage: GeminiUsage?)
+                var actualUseLocalAI = useLocalAI
+                var actualProviderTitle = providerTitle
+                var resolvedCacheKey = cacheKey
+                if useLocalAI {
+                    result = try await translateWithLocalAI(statusProviderTitle: providerTitle)
+                } else {
+                    do {
+                        result = try await self.geminiClient.translateStreaming(
+                            text: text,
+                            from: pair.sourceFull,
+                            to: pair.targetFull,
+                            context: context,
+                            glossary: glossaryPrompt,
+                            sourceAppHint: "Verso Workspace",
+                            preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode,
+                            model: self.settings.model,
+                            apiKey: self.settings.apiKey,
+                            onChunk: { [weak self] partial in
+                                guard let self else { return }
+                                await MainActor.run {
+                                    self.applyTranslationChunk(
+                                        partial,
+                                        runID: runID,
+                                        statusProviderTitle: providerTitle
+                                    )
+                                }
+                            }
+                        )
+                    } catch {
+                        guard self.canFallbackToLocalAI(after: error, currentlyUsingLocalAI: useLocalAI) else {
+                            throw error
+                        }
+                        guard self.translationRunID == runID, !Task.isCancelled else { return }
+                        actualUseLocalAI = true
+                        actualProviderTitle = self.settings.providerTitle(useLocalAI: true)
+                        resolvedCacheKey = self.cache.key(
+                            text: text,
+                            source: pair.sourceShort,
+                            target: pair.targetShort,
+                            glossary: glossaryPrompt,
+                            context: context,
+                            model: self.settings.modelKey(useLocalAI: true),
+                            preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode
+                        )
+                        self.statusText = "Switching to \(actualProviderTitle) · \(self.sourceTargetSummary)"
+                        result = try await translateWithLocalAI(statusProviderTitle: actualProviderTitle)
+                    }
+                }
                 guard self.translationRunID == runID, !Task.isCancelled else { return }
 
                 self.resultText = result.text
-                self.statusText = "Done · \(providerTitle) · \(self.sourceTargetSummary)"
+                self.statusText = "Done · \(actualProviderTitle) · \(self.sourceTargetSummary)"
                 if let u = result.usage {
                     self.usage.record(
-                        model: self.settings.modelKey(useLocalAI: useLocalAI),
+                        model: self.settings.modelKey(useLocalAI: actualUseLocalAI),
                         promptTokens: u.promptTokens,
                         responseTokens: u.responseTokens
                     )
                 }
                 if self.settings.cacheEnabled {
-                    self.cache.set(cacheKey, geminiTranslation: result.text)
+                    self.cache.set(resolvedCacheKey, geminiTranslation: result.text)
                 }
                 self.recordHistory(sourceText: text, translation: result.text, pair: pair)
             } catch is CancellationError {
@@ -338,6 +367,22 @@ final class WorkspaceViewModel: ObservableObject {
         statusText = inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? ""
             : "Edited · translate to refresh"
+    }
+
+    private func applyTranslationChunk(
+        _ partial: String,
+        runID: UUID,
+        statusProviderTitle: String
+    ) {
+        guard translationRunID == runID else { return }
+        resultText = partial
+        statusText = "Translating · \(statusProviderTitle) · \(sourceTargetSummary)"
+    }
+
+    private func canFallbackToLocalAI(after error: Error, currentlyUsingLocalAI: Bool) -> Bool {
+        guard !currentlyUsingLocalAI else { return false }
+        guard let geminiError = error as? GeminiError else { return false }
+        return geminiError.canFallbackToLocalAI
     }
 }
 

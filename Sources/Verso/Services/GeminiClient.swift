@@ -46,6 +46,17 @@ enum GeminiError: LocalizedError {
             return String(body.prefix(200))
         }
     }
+
+    var canFallbackToLocalAI: Bool {
+        switch self {
+        case .missingApiKey, .offline, .timedOut, .rateLimited:
+            return true
+        case .httpError(let code, _):
+            return code == -1 || code == 401 || code == 403 || (500...599).contains(code)
+        case .safetyFiltered, .invalidResponse:
+            return false
+        }
+    }
 }
 
 /// Returned alongside translation text so callers can record token usage.
