@@ -71,7 +71,12 @@ final class WorkspaceViewModel: ObservableObject {
         }
     }
     @Published var resultText: String = ""
-    @Published var selectedTarget: String = "auto"
+    @Published var selectedTarget: String = "auto" {
+        didSet {
+            guard selectedTarget != oldValue else { return }
+            resetResultAfterTargetChange()
+        }
+    }
     @Published var statusText: String = ""
     @Published var errorText: String?
     @Published var isTranslating: Bool = false
@@ -398,6 +403,21 @@ final class WorkspaceViewModel: ObservableObject {
         statusText = inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? ""
             : "Edited · translate to refresh"
+    }
+
+    private func resetResultAfterTargetChange() {
+        translateTask?.cancel()
+        translateTask = nil
+        translationRunID = UUID()
+        isTranslating = false
+
+        resultText = ""
+        errorText = nil
+        failedUsingLocalAI = false
+        sourceTargetSummary = ""
+        statusText = inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? ""
+            : "Target changed · translate to refresh"
     }
 
     private func applyTranslationChunk(
