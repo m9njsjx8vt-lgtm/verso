@@ -46,8 +46,8 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSHumanReadableCopyright: "© 2026 Tomoro Iwasaki"
-        # Sparkle auto-update — REPLACE these with real values via docs/sparkle-handoff.md
-        # before first signed release. Until then, 'Check for Updates' menu item is hidden.
+        # Sparkle auto-update. Release operations are documented in docs/sparkle-handoff.md
+        # and docs/sparkle-setup-todo.md.
         SUFeedURL: "https://m9njsjx8vt-lgtm.github.io/verso/appcast.xml"
         SUPublicEDKey: "aVgntSFEasAg4ONSz47gO8R3Ir3IUDoJSnO6etS6Q74="
         SUEnableInstallerLauncherService: false

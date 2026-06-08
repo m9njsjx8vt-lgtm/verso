@@ -1,113 +1,66 @@
-# Sparkle 自動アップデート — セットアップTODO
+# Sparkle 自動アップデート — 残作業チェック
 
-Verso v0.7.0 では Sparkle 組込み準備のみ。実際の自動アップデート稼働には以下の手順が必要。
+Verso v0.9.0 時点で、Sparkle の基本組み込みは完了済み。
 
-## 1. Sparkle Swift Package を追加
+- Sparkle Swift Package: `project.yml` に追加済み
+- `SPUStandardUpdaterController`: `AppDelegate.swift` に追加済み
+- `SUFeedURL`: `https://m9njsjx8vt-lgtm.github.io/verso/appcast.xml`
+- `SUPublicEDKey`: `project.yml` / `Generated-Info.plist` に設定済み
+- GitHub Pages: `main:/docs` で `docs/appcast.xml` を配信
+- 公開リリース: `v0.8.0`, `v0.9.0`
 
-`project.yml` に:
+今は Tomoro 本人利用を優先する。別ユーザー向けの追加導線や説明は、渡す直前に別途作る。
 
-```yaml
-packages:
-  Sparkle:
-    url: https://github.com/sparkle-project/Sparkle
-    minorVersion: 2.6.0
+## いま残っていること
 
-targets:
-  Verso:
-    dependencies:
-      - package: Sparkle
-        product: Sparkle
-```
+### 1. 配布ビルド用の署名環境
 
-## 2. EdDSA キーペア生成 (一度だけ)
+`Tools/build_dmg.sh` は配布用に `Verso Self-Signed` 署名証明書を要求する。
 
 ```bash
-# Sparkle に同梱されるツール (Swift Package Pluginsから取得)
-swift run --package-path .build/checkouts/Sparkle generate_keys
-# → 公開鍵 + 秘密鍵が出力される
-# 秘密鍵は ~/.local/share/sparkle/private/ に保管 (絶対公開しない)
-# 公開鍵は base64 文字列、Info.plist の SUPublicEDKey に貼る
+security find-identity -v -p codesigning | grep "Verso Self-Signed"
 ```
 
-## 3. Info.plist (project.yml の info.properties) に追加
+見つからない場合:
 
-```yaml
-SUFeedURL: "https://github.com/<username>/verso/releases/latest/download/appcast.xml"
-SUPublicEDKey: "<生成された公開鍵base64文字列>"
-SUEnableAutomaticChecks: true
-SUScheduledCheckInterval: 86400  # 1日に1回チェック
-```
+- 本人利用のデバッグ起動: `./script/build_and_run.sh --verify`
+- DMG配布: 証明書を作成/importしてから `./Tools/build_dmg.sh`
 
-## 4. Swift コードに Updater を組込む
+### 2. リリースごとの手順
 
-`AppDelegate.swift`:
-
-```swift
-import Sparkle
-
-let updaterController = SPUStandardUpdaterController(
-    startingUpdater: true,
-    updaterDelegate: nil,
-    userDriverDelegate: nil
-)
-
-// メニュー項目
-NSMenuItem(title: "Check for Updates…",
-           action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
-           keyEquivalent: "")
-    .target = updaterController
-```
-
-## 5. GitHub リポジトリ作成
-
-1. プライベートでもOK。GitHub Releases は誰でも DL 可能
-2. `verso` という名前で作成
-3. Settings → Pages を有効化（appcast.xml ホスト用）
-
-## 6. リリースフロー
+1. `project.yml` の `CFBundleShortVersionString` と `CFBundleVersion` を上げる
+2. `./Tools/build_dmg.sh <version>` を実行
+3. 出力された `sparkle:edSignature` と `length` を `docs/appcast.xml` に追加
+4. GitHub Release に `dist/Verso-v<version>.dmg` を添付
+5. `docs/appcast.xml` を push
+6. GitHub Pages 反映後に appcast を確認
 
 ```bash
-# 1. Tools/build_dmg.sh で DMG 生成
-./Tools/build_dmg.sh 0.7.0
-
-# 2. EdDSA で署名 → appcast.xml にサイン情報含める
-sign_update dist/Verso-v0.7.0.dmg
-# → output: ed25519="<署名base64>"  length="<バイト>"
-
-# 3. appcast.xml を更新（テンプレを別途作成必要）
-# 4. GitHub Release 作成 + DMG をアップロード
-gh release create v0.7.0 dist/Verso-v0.7.0.dmg \
-  --title "Verso v0.7.0" \
-  --notes-file CHANGELOG-0.7.0.md
-
-# 5. appcast.xml をコミット & push (Pages がホスト)
-git add appcast.xml && git commit -m "release v0.7.0" && git push
+curl https://m9njsjx8vt-lgtm.github.io/verso/appcast.xml
 ```
 
-## 7. 将来の引き渡し先側
+### 3. 将来のDeveloper ID対応
 
-何もしなくてよい:
-- Verso が起動中なら 1日1回 SUFeedURL をチェック
-- 新版検出 → 通知ダイアログ「v0.7.0 が出ました — Update Now / Later」
-- Update Now → ダウンロード + EdDSA 検証 + 自動再起動
+今の `Verso Self-Signed` は本人利用・検証用。広く配る段階では:
 
-## 8. 完成時の体感
+- Apple Developer Program に登録
+- Developer ID Application 証明書で署名
+- Hardened Runtime を有効化
+- notarization を追加
 
-| | Before (Sparkle なし) | After (Sparkle あり) |
-|---|---|---|
-| アップデート通知 | あなたが「新版送るね」と連絡 | 自動表示 |
-| インストール | 受け取った人が DMG を開いて手動コピー | 1クリック |
-| 警告 | Gatekeeper警告（自己署名） | 警告なし（EdDSA自動検証） |
+## 完成判定
 
-## 9. 工数
+本人利用では、以下が満たされれば十分:
 
-- **Sparkle SPM追加 + Info.plist + コード組込み**: 30分
-- **キー生成 + GitHub repo セットアップ + Pages 有効化**: 30分
-- **build_dmg.sh の sign + appcast 更新拡張**: 30分
-- **テストリリース → 別Macで自動DL確認**: 30分
+- `./script/build_and_run.sh --verify` が通る
+- `verso://settings` が開く
+- `⌘C×2`, `⌘⇧T`, `⌥⇧C` が落ちずに動く
+- Local AI が `Test Local AI` で通る
+- DeepL APIキーなしでもオンボーディングを完了できる
 
-合計 ~2時間で「別ユーザーに渡してから後の運用が完全自動」になる。
+配布準備では、追加で以下が必要:
 
-## 10. やるタイミング
-
-別ユーザーへ渡す**当日 or 前日**に組むのが良い。早すぎても使わない。
+- `./Tools/build_dmg.sh <version>` が成功する
+- GitHub Release からDMGをダウンロードできる
+- `docs/appcast.xml` の新 `<item>` が実DMGと一致する
+- Sparkle の更新確認で新版が検出される
