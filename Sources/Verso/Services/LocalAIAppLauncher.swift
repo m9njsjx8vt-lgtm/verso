@@ -21,7 +21,7 @@ enum LocalAIAppLauncher {
         switch backend {
         case .ollama:
             if let appURL = appURL(for: .ollama) {
-                return openApp(url: appURL, successMessage: "Ollamaを開きました。数秒後にRefresh Modelsを押してください。")
+                return openApp(url: appURL, successMessage: "Ollamaを開きました。モデル確認を自動で再試行します。")
             }
             if let started = startOllamaServe() {
                 return started
@@ -32,7 +32,7 @@ enum LocalAIAppLauncher {
             )
         case .openAICompatible:
             if let appURL = appURL(for: .lmStudio) {
-                return openApp(url: appURL, successMessage: "LM Studioを開きました。Local Serverを起動してからRefresh Modelsを押してください。")
+                return openApp(url: appURL, successMessage: "LM Studioを開きました。Local Serverを起動するとモデル確認できます。")
             }
             return LocalAIAppLaunchResult(
                 succeeded: false,
@@ -114,7 +114,7 @@ enum LocalAIAppLauncher {
             try process.run()
             return LocalAIAppLaunchResult(
                 succeeded: true,
-                message: "Ollamaサーバーを起動しました。数秒後にRefresh Modelsを押してください。"
+                message: "Ollamaサーバーを起動しました。モデル確認を自動で再試行します。"
             )
         } catch {
             return LocalAIAppLaunchResult(

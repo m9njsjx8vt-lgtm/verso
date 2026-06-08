@@ -219,9 +219,7 @@ struct SettingsView: View {
 
             HStack(spacing: 8) {
                 Button {
-                    let result = LocalAIAppLauncher.openServerApp(for: settings.selectedLocalAIBackend)
-                    localAIAppLaunchSucceeded = result.succeeded
-                    localAIAppLaunchMessage = result.message
+                    openLocalAIServerApp()
                 } label: {
                     Label(
                         LocalAIAppLauncher.buttonTitle(for: settings.selectedLocalAIBackend),
@@ -376,6 +374,20 @@ struct SettingsView: View {
                     localAIModelListMessage = error.localizedDescription
                     isLoadingLocalAIModels = false
                 }
+            }
+        }
+    }
+
+    private func openLocalAIServerApp() {
+        let result = LocalAIAppLauncher.openServerApp(for: settings.selectedLocalAIBackend)
+        localAIAppLaunchSucceeded = result.succeeded
+        localAIAppLaunchMessage = result.message
+
+        guard result.succeeded else { return }
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await MainActor.run {
+                refreshLocalAIModelsIfUseful(force: true)
             }
         }
     }
