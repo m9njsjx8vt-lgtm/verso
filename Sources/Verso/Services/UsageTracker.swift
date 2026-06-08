@@ -88,9 +88,15 @@ final class UsageTracker: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: storeURL),
-              let decoded = try? JSONDecoder().decode([UsageRecord].self, from: data)
-        else { return }
+        guard let data = try? Data(contentsOf: storeURL) else { return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = (try? decoder.decode([UsageRecord].self, from: data))
+            ?? (try? JSONDecoder().decode([UsageRecord].self, from: data))
+        guard let decoded else {
+            print("[usage] load error: failed to decode saved usage records")
+            return
+        }
         records = decoded
     }
 

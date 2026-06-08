@@ -83,9 +83,15 @@ final class HistoryStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: storeURL),
-              let decoded = try? JSONDecoder().decode([HistoryEntry].self, from: data)
-        else { return }
+        guard let data = try? Data(contentsOf: storeURL) else { return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = (try? decoder.decode([HistoryEntry].self, from: data))
+            ?? (try? JSONDecoder().decode([HistoryEntry].self, from: data))
+        guard let decoded else {
+            print("[history] load error: failed to decode saved history")
+            return
+        }
         entries = decoded
         trimToLimit()
         if entries.count != decoded.count {

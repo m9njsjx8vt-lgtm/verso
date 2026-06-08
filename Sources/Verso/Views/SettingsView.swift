@@ -819,6 +819,8 @@ struct SettingsView: View {
 
 struct GlossaryTabView: View {
     @ObservedObject var glossary: Glossary
+    @State private var fileOperationMessage: String?
+    @State private var fileOperationSucceeded: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -838,6 +840,12 @@ struct GlossaryTabView: View {
                 }
                 .controlSize(.small)
             }
+            if let fileOperationMessage {
+                Label(fileOperationMessage, systemImage: fileOperationSucceeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundColor(fileOperationSucceeded ? .secondary : .red)
+                    .lineLimit(2)
+            }
             GlossaryView(glossary: glossary)
         }
     }
@@ -852,7 +860,12 @@ struct GlossaryTabView: View {
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 let data = try encoder.encode(glossary.entries)
                 try data.write(to: url, options: .atomic)
+                setFileOperationMessage(
+                    "\(glossary.entries.count) 件を \(url.lastPathComponent) に書き出しました。",
+                    succeeded: true
+                )
             } catch {
+                setFileOperationMessage("Glossary の書き出しに失敗しました。", succeeded: false)
                 NSAlert(error: error).runModal()
             }
         }
@@ -866,6 +879,10 @@ struct GlossaryTabView: View {
             do {
                 let data = try Data(contentsOf: url)
                 let imported = try JSONDecoder().decode([GlossaryEntry].self, from: data)
+                guard !imported.isEmpty else {
+                    setFileOperationMessage("取り込める Glossary エントリがありませんでした。", succeeded: false)
+                    return
+                }
 
                 let alert = NSAlert()
                 alert.messageText = "Glossary をインポート"
@@ -876,20 +893,30 @@ struct GlossaryTabView: View {
                 let resp = alert.runModal()
 
                 if resp == .alertFirstButtonReturn {
-                    for e in imported {
-                        glossary.add(term: e.term, translation: e.translation,
-                                     preserveAsIs: e.preserveAsIs, notes: e.notes)
-                    }
+                    setImportResultMessage(glossary.importEntries(imported, replacingExisting: false))
                 } else if resp == .alertSecondButtonReturn {
-                    for e in glossary.entries { glossary.remove(e) }
-                    for e in imported {
-                        glossary.add(term: e.term, translation: e.translation,
-                                     preserveAsIs: e.preserveAsIs, notes: e.notes)
-                    }
+                    setImportResultMessage(glossary.importEntries(imported, replacingExisting: true))
                 }
             } catch {
+                setFileOperationMessage("Glossary の取り込みに失敗しました。", succeeded: false)
                 NSAlert(error: error).runModal()
             }
         }
+    }
+
+    private func setImportResultMessage(_ result: GlossaryImportResult) {
+        if result.skipped > 0 {
+            setFileOperationMessage(
+                "\(result.added) 件を取り込みました。\(result.skipped) 件は空欄または重複のためスキップしました。",
+                succeeded: result.added > 0
+            )
+        } else {
+            setFileOperationMessage("\(result.added) 件を取り込みました。", succeeded: true)
+        }
+    }
+
+    private func setFileOperationMessage(_ message: String, succeeded: Bool) {
+        fileOperationMessage = message
+        fileOperationSucceeded = succeeded
     }
 }
