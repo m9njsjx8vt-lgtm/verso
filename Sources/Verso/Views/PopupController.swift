@@ -47,9 +47,12 @@ final class PopupController {
     func show(
         originalText: String,
         forceTarget: String? = nil,
-        preserveSourceApp: Bool = false
+        preserveSourceApp: Bool = false,
+        sourceApplication: NSRunningApplication? = nil
     ) {
-        if !preserveSourceApp || sourceApp == nil {
+        if let sourceApplication {
+            sourceApp = sourceApplication
+        } else if !preserveSourceApp || sourceApp == nil {
             sourceApp = frontmostNonVersoApplication()
         }
 

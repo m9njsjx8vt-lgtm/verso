@@ -8,6 +8,7 @@ final class OCRCoordinator {
     private struct CapturableWindow {
         let id: CGWindowID
         let ownerName: String
+        let ownerPID: Int32
     }
 
     init(popupController: PopupController) {
@@ -27,6 +28,7 @@ final class OCRCoordinator {
             showError("キャプチャ可能な前面ウィンドウが見つかりません。対象アプリのウィンドウを前面に出してから再試行してください。")
             return
         }
+        let sourceApp = NSRunningApplication(processIdentifier: target.ownerPID)
         guard let cgImage = CGWindowListCreateImage(
             .null,
             .optionIncludingWindow,
@@ -39,7 +41,7 @@ final class OCRCoordinator {
         Task { @MainActor in
             do {
                 let text = try await OCRService.recognizeText(in: cgImage)
-                self.showRecognizedText(text)
+                self.showRecognizedText(text, sourceApp: sourceApp)
             } catch {
                 self.showError(error.localizedDescription)
             }
@@ -54,11 +56,12 @@ final class OCRCoordinator {
         // Close any existing selection window first
         selectionWindow?.orderOut(nil)
         selectionWindow = nil
+        let sourceApp = frontmostNonVersoApplication()
 
         let window = RegionSelectionWindow(
             screen: screen,
             onSelect: { [weak self] cgRect in
-                self?.captureAndTranslate(rect: cgRect)
+                self?.captureAndTranslate(rect: cgRect, sourceApp: sourceApp)
                 self?.selectionWindow = nil
             },
             onCancel: { [weak self] in
@@ -70,7 +73,7 @@ final class OCRCoordinator {
         window.makeKeyAndOrderFront(nil)
     }
 
-    private func captureAndTranslate(rect: CGRect) {
+    private func captureAndTranslate(rect: CGRect, sourceApp: NSRunningApplication?) {
         // CGWindowListCreateImage works on macOS 10.5+ (deprecated in 14 but still functional)
         guard let cgImage = CGWindowListCreateImage(
             rect,
@@ -85,27 +88,28 @@ final class OCRCoordinator {
         Task { @MainActor in
             do {
                 let text = try await OCRService.recognizeText(in: cgImage)
-                self.showRecognizedText(text)
+                self.showRecognizedText(text, sourceApp: sourceApp)
             } catch {
                 self.showError(error.localizedDescription)
             }
         }
     }
 
-    private func showRecognizedText(_ text: String) {
+    private func showRecognizedText(_ text: String, sourceApp: NSRunningApplication?) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             showError("テキストを検出できませんでした。範囲を少し広げるか、文字がはっきり見える場所を選んでください。")
             return
         }
-        popupController?.show(originalText: trimmed)
+        popupController?.show(originalText: trimmed, sourceApplication: sourceApp)
     }
 
     private func frontmostCapturableWindow(in infoList: [[String: Any]]) -> CapturableWindow? {
         let currentPID = Int32(ProcessInfo.processInfo.processIdentifier)
 
         for info in infoList {
-            guard int32Value(info[kCGWindowOwnerPID as String]) != currentPID,
+            guard let ownerPID = int32Value(info[kCGWindowOwnerPID as String]),
+                  ownerPID != currentPID,
                   intValue(info[kCGWindowLayer as String]) == 0,
                   let windowID = windowIDValue(info[kCGWindowNumber as String]),
                   let bounds = info[kCGWindowBounds as String] as? [String: Any],
@@ -121,10 +125,24 @@ final class OCRCoordinator {
             guard alpha > 0.01 else { continue }
 
             let ownerName = info[kCGWindowOwnerName as String] as? String ?? "対象アプリ"
-            return CapturableWindow(id: windowID, ownerName: ownerName)
+            return CapturableWindow(id: windowID, ownerName: ownerName, ownerPID: ownerPID)
         }
 
         return nil
+    }
+
+    private func frontmostNonVersoApplication() -> NSRunningApplication? {
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let currentBundleID = Bundle.main.bundleIdentifier
+
+        guard let frontmost = NSWorkspace.shared.frontmostApplication else { return nil }
+        if frontmost.processIdentifier == currentPID {
+            return nil
+        }
+        if let currentBundleID, frontmost.bundleIdentifier == currentBundleID {
+            return nil
+        }
+        return frontmost
     }
 
     private func intValue(_ value: Any?) -> Int? {
