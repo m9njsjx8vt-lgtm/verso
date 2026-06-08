@@ -450,6 +450,13 @@ final class GeminiClient {
         - Do not answer in the source language or in a third language.
         - Do not explain how you translated the text.
 
+        ## FIDELITY RULES
+        - Preserve the speech act: statements stay statements, questions stay questions, commands stay commands.
+        - Do not turn a declarative status update into an instruction or imperative.
+        - For Japanese-to-English status updates, translate "shimasu" / "shiteimasu" as "I will..." or "I am..." when the speaker is reporting their own action.
+        - Translate engineering status shorthand naturally: "kakunin OK" as "check passed" or "confirmed OK"; "logs have not increased" as "no new logs have appeared" or "no new logs were added".
+        - Prefer clear product-engineering English over literal fragments.
+
         ## TASK
         Translate the following \(from) text into natural, fluent \(to). \
         Match the user's tone, terminology, and proper-noun conventions. \

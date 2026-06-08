@@ -943,6 +943,10 @@ final class LocalAIClient {
         Do not include <think> tags or hidden reasoning text.
         Do not answer in the source language or in a third language.
         If the target language is English, every natural-language sentence in the output must be English.
+        Preserve the speech act: statements stay statements, questions stay questions, commands stay commands.
+        Never turn a declarative status update into an instruction or imperative.
+        For Japanese-to-English status updates, translate "shimasu" / "shiteimasu" as "I will..." or "I am..." when the speaker is reporting their own action.
+        Translate engineering status shorthand naturally: "kakunin OK" as "check passed" or "confirmed OK"; "logs have not increased" as "no new logs have appeared" or "no new logs were added".
         """
     }
 
