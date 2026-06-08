@@ -23,6 +23,8 @@ final class PopupViewModel: ObservableObject {
     @Published var aiProviderTitle: String
     @Published var aiProviderIcon: String
     @Published var allowsCloudPro: Bool
+    @Published var canStartLocalAIServer: Bool
+    @Published var localAIStartButtonTitle: String
 
     // --- Grammar chat state ---
     @Published var chatMessages: [ChatMessage] = []
@@ -49,6 +51,7 @@ final class PopupViewModel: ObservableObject {
     let onSendChat: (String) -> Void
     let onClearChat: () -> Void
     let onOpenSettings: () -> Void
+    let onStartLocalAIServer: () -> Void
 
     init(
         originalText: String, fromLang: String, toLang: String,
@@ -57,6 +60,8 @@ final class PopupViewModel: ObservableObject {
         aiProviderTitle: String,
         aiProviderIcon: String,
         allowsCloudPro: Bool,
+        canStartLocalAIServer: Bool,
+        localAIStartButtonTitle: String,
         onInsert: @escaping (String) -> Void,
         onCopy: @escaping (String) -> Void,
         onClose: @escaping () -> Void,
@@ -72,7 +77,8 @@ final class PopupViewModel: ObservableObject {
         onFurigana: @escaping () -> Void,
         onSendChat: @escaping (String) -> Void,
         onClearChat: @escaping () -> Void,
-        onOpenSettings: @escaping () -> Void
+        onOpenSettings: @escaping () -> Void,
+        onStartLocalAIServer: @escaping () -> Void
     ) {
         self.originalText = originalText
         self.fromLang = fromLang
@@ -84,6 +90,8 @@ final class PopupViewModel: ObservableObject {
         self.aiProviderTitle = aiProviderTitle
         self.aiProviderIcon = aiProviderIcon
         self.allowsCloudPro = allowsCloudPro
+        self.canStartLocalAIServer = canStartLocalAIServer
+        self.localAIStartButtonTitle = localAIStartButtonTitle
         self.onInsert = onInsert
         self.onCopy = onCopy
         self.onClose = onClose
@@ -100,6 +108,7 @@ final class PopupViewModel: ObservableObject {
         self.onSendChat = onSendChat
         self.onClearChat = onClearChat
         self.onOpenSettings = onOpenSettings
+        self.onStartLocalAIServer = onStartLocalAIServer
     }
 
     var primaryInsertText: String {
@@ -286,6 +295,15 @@ struct PopupView: View {
                 }
 
                 if case .failed = state {
+                    if editable && viewModel.canStartLocalAIServer {
+                        Button(action: viewModel.onStartLocalAIServer) {
+                            Label(viewModel.localAIStartButtonTitle, systemImage: "play.circle")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.borderless).controlSize(.small)
+                        .help("Start the selected local AI server and retry")
+                    }
+
                     Button(action: viewModel.onRetry) {
                         Label("Retry", systemImage: "arrow.clockwise").labelStyle(.titleAndIcon)
                     }

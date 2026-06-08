@@ -95,6 +95,8 @@ final class PopupController {
             aiProviderTitle: settings.providerTitle(useLocalAI: useLocalAI),
             aiProviderIcon: settings.providerIcon(useLocalAI: useLocalAI),
             allowsCloudPro: !useLocalAI,
+            canStartLocalAIServer: useLocalAI,
+            localAIStartButtonTitle: LocalAIAppLauncher.buttonTitle(for: settings.selectedLocalAIBackend),
             onInsert: { [weak self] t in self?.insertAndClose(t) },
             onCopy: { [weak self] t in
                 NSPasteboard.general.clearContents()
@@ -140,6 +142,9 @@ final class PopupController {
             },
             onOpenSettings: { [weak self] in
                 self?.openSettings()
+            },
+            onStartLocalAIServer: { [weak self] in
+                self?.startLocalAIFromPopup()
             }
         )
         currentViewModel = viewModel
@@ -348,7 +353,22 @@ final class PopupController {
         viewModel.aiProviderTitle = settings.providerTitle(useLocalAI: true)
         viewModel.aiProviderIcon = settings.providerIcon(useLocalAI: true)
         viewModel.allowsCloudPro = false
+        viewModel.canStartLocalAIServer = true
+        viewModel.localAIStartButtonTitle = LocalAIAppLauncher.buttonTitle(for: settings.selectedLocalAIBackend)
         viewModel.showToast(message)
+    }
+
+    private func startLocalAIFromPopup() {
+        guard let viewModel = currentViewModel else { return }
+        let result = LocalAIAppLauncher.openServerApp(for: settings.selectedLocalAIBackend)
+        viewModel.localAIStartButtonTitle = LocalAIAppLauncher.buttonTitle(for: settings.selectedLocalAIBackend)
+        viewModel.showToast(result.message, duration: result.succeeded ? 3.0 : 5.0)
+
+        guard result.succeeded else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            self?.retry()
+        }
     }
 
     private func refine(instruction: String) {
