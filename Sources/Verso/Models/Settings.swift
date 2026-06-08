@@ -241,9 +241,9 @@ final class AppSettings: ObservableObject {
 
     init() {
         let d = UserDefaults.standard
-        let storedApiKey = SecretsStore.get("geminiApiKey") ?? ""
+        let storedApiKey = Self.migratedSecret(forKey: "geminiApiKey")
         self.apiKey = storedApiKey
-        self.deeplApiKey = SecretsStore.get("deeplApiKey") ?? ""
+        self.deeplApiKey = Self.migratedSecret(forKey: "deeplApiKey")
         let savedProvider = d.string(forKey: "translationProvider") ?? TranslationProvider.defaultProvider.rawValue
         self.translationProvider = TranslationProvider(rawValue: savedProvider)?.rawValue
             ?? TranslationProvider.defaultProvider.rawValue
@@ -268,6 +268,17 @@ final class AppSettings: ObservableObject {
         self.appLanguage = d.string(forKey: "appLanguage") ?? "system"
         self.hasCompletedOnboarding = d.object(forKey: "hasCompletedOnboarding") as? Bool ?? !storedApiKey.isEmpty
         L10n.setLanguage(self.appLanguage)
+    }
+
+    private static func migratedSecret(forKey key: String) -> String {
+        if let fileValue = SecretsStore.get(key), !fileValue.isEmpty {
+            return fileValue
+        }
+        guard let keychainValue = KeychainService.get(forKey: key), !keychainValue.isEmpty else {
+            return ""
+        }
+        _ = SecretsStore.set(keychainValue, forKey: key)
+        return keychainValue
     }
 
     var selectedTranslationProvider: TranslationProvider {

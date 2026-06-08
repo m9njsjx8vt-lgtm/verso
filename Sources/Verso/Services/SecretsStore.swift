@@ -26,7 +26,7 @@ enum SecretsStore {
     @discardableResult
     static func set(_ value: String, forKey key: String) -> Bool {
         var dict = loadAll()
-        if value.trimmingCharacters(in: .whitespaces).isEmpty {
+        if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             dict.removeValue(forKey: key)
         } else {
             dict[key] = value
