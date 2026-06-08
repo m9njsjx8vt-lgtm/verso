@@ -76,6 +76,7 @@ final class WorkspaceViewModel: ObservableObject {
     @Published var errorText: String?
     @Published var isTranslating: Bool = false
     @Published var sourceTargetSummary: String = ""
+    @Published var failedUsingLocalAI: Bool = false
 
     private let popupController: PopupController
     private let settings: AppSettings
@@ -132,6 +133,7 @@ final class WorkspaceViewModel: ObservableObject {
         let runID = UUID()
         translationRunID = runID
         errorText = nil
+        failedUsingLocalAI = false
         resultText = ""
         let useLocalAI = settings.shouldRouteToLocalAI(isOnline: network.isOnline)
         let providerTitle = settings.providerTitle(useLocalAI: useLocalAI)
@@ -171,6 +173,7 @@ final class WorkspaceViewModel: ObservableObject {
 
         translateTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            var attemptedLocalAI = useLocalAI
             defer {
                 if self.translationRunID == runID {
                     self.isTranslating = false
@@ -209,6 +212,7 @@ final class WorkspaceViewModel: ObservableObject {
                 var actualProviderTitle = providerTitle
                 var resolvedCacheKey = cacheKey
                 if useLocalAI {
+                    attemptedLocalAI = true
                     result = try await translateWithLocalAI(statusProviderTitle: providerTitle)
                 } else {
                     do {
@@ -239,6 +243,7 @@ final class WorkspaceViewModel: ObservableObject {
                         }
                         guard self.translationRunID == runID, !Task.isCancelled else { return }
                         actualUseLocalAI = true
+                        attemptedLocalAI = true
                         actualProviderTitle = self.settings.providerTitle(useLocalAI: true)
                         resolvedCacheKey = self.cache.key(
                             text: text,
@@ -257,6 +262,7 @@ final class WorkspaceViewModel: ObservableObject {
 
                 self.resultText = result.text
                 self.statusText = "Done · \(actualProviderTitle) · \(self.sourceTargetSummary)"
+                self.failedUsingLocalAI = false
                 if let u = result.usage {
                     self.usage.record(
                         model: self.settings.modelKey(useLocalAI: actualUseLocalAI),
@@ -271,10 +277,12 @@ final class WorkspaceViewModel: ObservableObject {
             } catch is CancellationError {
                 if self.translationRunID == runID {
                     self.statusText = "Cancelled"
+                    self.failedUsingLocalAI = false
                 }
             } catch {
                 guard self.translationRunID == runID, !Task.isCancelled else { return }
                 self.errorText = error.localizedDescription
+                self.failedUsingLocalAI = attemptedLocalAI
                 self.statusText = ""
             }
         }
@@ -285,6 +293,7 @@ final class WorkspaceViewModel: ObservableObject {
         translateTask = nil
         translationRunID = UUID()
         isTranslating = false
+        failedUsingLocalAI = false
         statusText = "Cancelled"
     }
 
@@ -294,6 +303,7 @@ final class WorkspaceViewModel: ObservableObject {
         resultText = ""
         statusText = ""
         errorText = nil
+        failedUsingLocalAI = false
         sourceTargetSummary = ""
     }
 
@@ -337,6 +347,26 @@ final class WorkspaceViewModel: ObservableObject {
         }
     }
 
+    func startLocalAIAndRetry() {
+        guard !isTranslating else { return }
+        let result = LocalAIAppLauncher.openServerApp(for: settings.selectedLocalAIBackend)
+        guard result.succeeded else {
+            errorText = result.message
+            failedUsingLocalAI = true
+            statusText = ""
+            return
+        }
+
+        errorText = nil
+        failedUsingLocalAI = false
+        statusText = result.message
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            self?.translate()
+        }
+    }
+
     private func recordHistory(
         sourceText: String,
         translation: String,
@@ -363,6 +393,7 @@ final class WorkspaceViewModel: ObservableObject {
 
         resultText = ""
         errorText = nil
+        failedUsingLocalAI = false
         sourceTargetSummary = ""
         statusText = inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? ""
@@ -536,6 +567,17 @@ struct WorkspaceView: View {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .foregroundColor(.red)
                     .lineLimit(2)
+                if viewModel.failedUsingLocalAI {
+                    Button {
+                        viewModel.startLocalAIAndRetry()
+                    } label: {
+                        Label(
+                            LocalAIAppLauncher.buttonTitle(for: settings.selectedLocalAIBackend),
+                            systemImage: "play.circle"
+                        )
+                    }
+                    .controlSize(.small)
+                }
                 Button {
                     viewModel.openSettings()
                 } label: {
