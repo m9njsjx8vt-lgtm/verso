@@ -483,13 +483,26 @@ struct OnboardingView: View {
                     backend: backend,
                     endpoint: endpoint
                 )
+
+                if models.isEmpty {
+                    let discoveries = await LocalAIClient().discoverServers()
+                    await MainActor.run {
+                        guard localAIModelRefreshID == requestID else { return }
+                        guard currentLocalAIRequestMatches(backend: backend, endpoint: endpoint) else {
+                            isLoadingLocalAIModels = false
+                            return
+                        }
+                        applyLocalAIDiscoveryFallback(
+                            discoveries,
+                            fallbackMessage: "モデルが見つかりません"
+                        )
+                    }
+                    return
+                }
+
                 await MainActor.run {
                     guard localAIModelRefreshID == requestID else { return }
-                    guard selectedProvider == .localAI,
-                          backend == selectedLocalBackend,
-                          endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-                            == localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    else {
+                    guard currentLocalAIRequestMatches(backend: backend, endpoint: endpoint) else {
                         isLoadingLocalAIModels = false
                         return
                     }
@@ -503,9 +516,7 @@ struct OnboardingView: View {
                         )
                     ]
                     let currentModel = localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if models.isEmpty {
-                        localAIModelListMessage = "モデルが見つかりません"
-                    } else if let recommended = LocalAIModelInfo.recommendedReplacement(
+                    if let recommended = LocalAIModelInfo.recommendedReplacement(
                         from: models,
                         currentModel: currentModel
                     ) {
@@ -517,10 +528,18 @@ struct OnboardingView: View {
                     isLoadingLocalAIModels = false
                 }
             } catch {
+                let fallbackMessage = error.localizedDescription
+                let discoveries = await LocalAIClient().discoverServers()
                 await MainActor.run {
                     guard localAIModelRefreshID == requestID else { return }
-                    localAIModelListMessage = error.localizedDescription
-                    isLoadingLocalAIModels = false
+                    guard currentLocalAIRequestMatches(backend: backend, endpoint: endpoint) else {
+                        isLoadingLocalAIModels = false
+                        return
+                    }
+                    applyLocalAIDiscoveryFallback(
+                        discoveries,
+                        fallbackMessage: fallbackMessage
+                    )
                 }
             }
         }
@@ -582,7 +601,31 @@ struct OnboardingView: View {
         isLoadingLocalAIModels = false
     }
 
+    private func applyLocalAIDiscoveryFallback(
+        _ discoveries: [LocalAIServerDiscovery],
+        fallbackMessage: String
+    ) {
+        discoveredLocalAIServers = discoveries
+        if let first = discoveries.first {
+            applyLocalAIDiscovery(first, messagePrefix: "自動検出")
+        } else {
+            localAIModelListMessage = fallbackMessage
+            isLoadingLocalAIModels = false
+        }
+    }
+
+    private func currentLocalAIRequestMatches(
+        backend: LocalAIBackend,
+        endpoint: String
+    ) -> Bool {
+        selectedProvider == .localAI
+            && backend == selectedLocalBackend
+            && endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+                == localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func resetLocalAIModelDiscovery() {
+        localAIModelRefreshID = UUID()
         discoveredLocalAIModels = []
         discoveredLocalAIServers = []
         localAIModelListMessage = nil
