@@ -8,6 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject var usage: UsageTracker
     @State private var showApiKey: Bool = false
     @State private var isConfirmingClearUsage: Bool = false
+    @State private var isConfirmingResetContext: Bool = false
 
     var body: some View {
         TabView {
@@ -222,12 +223,23 @@ struct SettingsView: View {
             HStack {
                 Spacer()
                 Button("Reset to default") {
-                    settings.translatorContext = AppSettings.defaultContext
+                    isConfirmingResetContext = true
                 }
                 .controlSize(.small)
             }
         }
         .padding()
+        .confirmationDialog(
+            "Reset translator context?",
+            isPresented: $isConfirmingResetContext
+        ) {
+            Button("Reset context", role: .destructive) {
+                settings.translatorContext = AppSettings.defaultContext
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This replaces your current custom tone, terminology notes, and translation preferences.")
+        }
     }
 
     // MARK: - Usage
