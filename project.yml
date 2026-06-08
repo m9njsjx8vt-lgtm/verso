@@ -43,6 +43,8 @@ targets:
         NSAppleEventsUsageDescription: "Verso pastes translated text into your active application using keyboard events."
         NSScreenCaptureUsageDescription: "Verso captures the area you select to OCR and translate the text in it."
         NSAccessibilityUsageDescription: "Verso watches for ⌘C×2 and ⌥⇧C globally so you can translate from any app. It does NOT log keystrokes."
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         NSHumanReadableCopyright: "© 2026 Tomoro Iwasaki"
         # Sparkle auto-update — REPLACE these with real values via docs/sparkle-handoff.md
         # before first signed release. Until then, 'Check for Updates' menu item is hidden.

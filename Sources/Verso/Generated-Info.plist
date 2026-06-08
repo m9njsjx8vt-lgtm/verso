@@ -41,6 +41,11 @@
 	<string>Verso watches for ⌘C×2 and ⌥⇧C globally so you can translate from any app. It does NOT log keystrokes.</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Verso pastes translated text into your active application using keyboard events.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
