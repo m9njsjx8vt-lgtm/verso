@@ -48,6 +48,7 @@ final class PopupViewModel: ObservableObject {
     let onFurigana: () -> Void
     let onSendChat: (String) -> Void
     let onClearChat: () -> Void
+    let onOpenSettings: () -> Void
 
     init(
         originalText: String, fromLang: String, toLang: String,
@@ -70,7 +71,8 @@ final class PopupViewModel: ObservableObject {
         onTryWithPro: @escaping () -> Void,
         onFurigana: @escaping () -> Void,
         onSendChat: @escaping (String) -> Void,
-        onClearChat: @escaping () -> Void
+        onClearChat: @escaping () -> Void,
+        onOpenSettings: @escaping () -> Void
     ) {
         self.originalText = originalText
         self.fromLang = fromLang
@@ -97,6 +99,7 @@ final class PopupViewModel: ObservableObject {
         self.onFurigana = onFurigana
         self.onSendChat = onSendChat
         self.onClearChat = onClearChat
+        self.onOpenSettings = onOpenSettings
     }
 
     var primaryInsertText: String {
@@ -283,6 +286,14 @@ struct PopupView: View {
                         Label("Retry", systemImage: "arrow.clockwise").labelStyle(.titleAndIcon)
                     }
                     .buttonStyle(.borderless).controlSize(.small)
+
+                    if editable {
+                        Button(action: viewModel.onOpenSettings) {
+                            Label("Settings", systemImage: "gearshape").labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.borderless).controlSize(.small)
+                        .help("AI Engine, Endpoint, Model, and API keys")
+                    }
                 }
 
                 if editable, case .ok = state, !viewModel.isEditing, !viewModel.isRefining {

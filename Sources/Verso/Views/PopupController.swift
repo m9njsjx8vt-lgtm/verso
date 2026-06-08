@@ -121,6 +121,9 @@ final class PopupController {
             onSendChat: { [weak self] question in self?.sendChat(question: question) },
             onClearChat: { [weak self] in
                 self?.currentViewModel?.chatMessages.removeAll()
+            },
+            onOpenSettings: { [weak self] in
+                self?.openSettings()
             }
         )
         currentViewModel = viewModel
@@ -354,6 +357,15 @@ final class PopupController {
         vm.geminiState = .loading
         if vm.showDeepLPanel { vm.deepLState = .loading }
         startInitialTranslations(viewModel: vm, cacheKey: cacheKey)
+    }
+
+    private func openSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        if #available(macOS 14, *) {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
     }
 
     /// Re-translate using gemini-2.5-pro for higher quality

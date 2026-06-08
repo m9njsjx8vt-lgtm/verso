@@ -287,6 +287,15 @@ final class WorkspaceViewModel: ObservableObject {
         popupController.show(originalText: text, forceTarget: selectedTarget == "auto" ? nil : selectedTarget)
     }
 
+    func openSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        if #available(macOS 14, *) {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
+    }
+
     private func recordHistory(
         sourceText: String,
         translation: String,
@@ -456,6 +465,12 @@ struct WorkspaceView: View {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .foregroundColor(.red)
                     .lineLimit(2)
+                Button {
+                    viewModel.openSettings()
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .controlSize(.small)
             } else if !viewModel.statusText.isEmpty {
                 Text(viewModel.statusText)
                     .foregroundColor(.secondary)
