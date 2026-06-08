@@ -6,6 +6,7 @@ final class HistoryWindowController {
     private let history: HistoryStore
     private var window: NSWindow?
     private weak var workspaceController: WorkspaceWindowController?
+    private weak var sourceApp: NSRunningApplication?
 
     init(
         history: HistoryStore,
@@ -16,6 +17,10 @@ final class HistoryWindowController {
     }
 
     func show() {
+        if let app = frontmostNonVersoApplication() {
+            sourceApp = app
+        }
+
         if let w = window {
             NSApp.activate(ignoringOtherApps: true)
             w.makeKeyAndOrderFront(nil)
@@ -57,11 +62,30 @@ final class HistoryWindowController {
     }
 
     private func insertAndClose(_ translation: String) {
-        // Put in clipboard, then send to whatever was frontmost before History opened
-        // (For history-driven inserts, easiest UX: copy to clipboard + close.
-        //  User can ⌘V where they need it.)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(translation, forType: .string)
+        let app = sourceApp
         close()
+
+        if let app {
+            app.activate()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                PasteService.sendCommandV()
+            }
+        }
+    }
+
+    private func frontmostNonVersoApplication() -> NSRunningApplication? {
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let currentBundleID = Bundle.main.bundleIdentifier
+
+        guard let frontmost = NSWorkspace.shared.frontmostApplication else { return nil }
+        if frontmost.processIdentifier == currentPID {
+            return nil
+        }
+        if let currentBundleID, frontmost.bundleIdentifier == currentBundleID {
+            return nil
+        }
+        return frontmost
     }
 }
