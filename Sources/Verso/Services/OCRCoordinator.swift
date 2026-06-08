@@ -5,6 +5,11 @@ final class OCRCoordinator {
     private weak var popupController: PopupController?
     private var selectionWindow: RegionSelectionWindow?
 
+    private struct CapturableWindow {
+        let id: CGWindowID
+        let ownerName: String
+    }
+
     init(popupController: PopupController) {
         self.popupController = popupController
     }
@@ -13,42 +18,22 @@ final class OCRCoordinator {
     func startWindowTranslation() {
         guard ensureScreenCapturePermission() else { return }
 
-        // Find the frontmost non-Verso app, then its main window
-        guard let frontApp = NSWorkspace.shared.runningApplications
-            .filter({ $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier })
-            .sorted(by: { ($0.activationPolicy.rawValue, $0.processIdentifier) < ($1.activationPolicy.rawValue, $1.processIdentifier) })
-            .first(where: { $0.isActive }) ?? NSWorkspace.shared.frontmostApplication
-        else {
-            showError("ターゲットウィンドウが見つかりません。")
-            return
-        }
-        let pid = frontApp.processIdentifier
         guard let infoList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
             showError("ウィンドウリスト取得失敗。")
             return
         }
-        // Largest window owned by the target PID
-        let candidates = infoList.compactMap { info -> (Int, Int, CGWindowID)? in
-            guard let ownerPID = info[kCGWindowOwnerPID as String] as? Int32, ownerPID == pid,
-                  let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
-                  let bounds = info[kCGWindowBounds as String] as? [String: CGFloat],
-                  let w = bounds["Width"], let h = bounds["Height"],
-                  let id = info[kCGWindowNumber as String] as? CGWindowID
-            else { return nil }
-            return (Int(w * h), Int(w + h), id)
-        }
-        guard let target = candidates.max(by: { $0.0 < $1.0 }) else {
-            showError("\(frontApp.localizedName ?? "対象アプリ") にキャプチャ可能なウィンドウがありません。")
+
+        guard let target = frontmostCapturableWindow(in: infoList) else {
+            showError("キャプチャ可能な前面ウィンドウが見つかりません。対象アプリのウィンドウを前面に出してから再試行してください。")
             return
         }
-        let windowID = target.2
         guard let cgImage = CGWindowListCreateImage(
             .null,
             .optionIncludingWindow,
-            windowID,
+            target.id,
             [.boundsIgnoreFraming, .nominalResolution]
         ) else {
-            showError("ウィンドウキャプチャに失敗しました。Screen Recording 権限を確認してください。")
+            showError("\(target.ownerName) のウィンドウキャプチャに失敗しました。Screen Recording 権限を確認してください。")
             return
         }
         Task { @MainActor in
@@ -114,6 +99,60 @@ final class OCRCoordinator {
             return
         }
         popupController?.show(originalText: trimmed)
+    }
+
+    private func frontmostCapturableWindow(in infoList: [[String: Any]]) -> CapturableWindow? {
+        let currentPID = Int32(ProcessInfo.processInfo.processIdentifier)
+
+        for info in infoList {
+            guard int32Value(info[kCGWindowOwnerPID as String]) != currentPID,
+                  intValue(info[kCGWindowLayer as String]) == 0,
+                  let windowID = windowIDValue(info[kCGWindowNumber as String]),
+                  let bounds = info[kCGWindowBounds as String] as? [String: Any],
+                  let width = cgFloatValue(bounds["Width"]),
+                  let height = cgFloatValue(bounds["Height"]),
+                  width >= 48,
+                  height >= 48
+            else {
+                continue
+            }
+
+            let alpha = cgFloatValue(info[kCGWindowAlpha as String]) ?? 1
+            guard alpha > 0.01 else { continue }
+
+            let ownerName = info[kCGWindowOwnerName as String] as? String ?? "対象アプリ"
+            return CapturableWindow(id: windowID, ownerName: ownerName)
+        }
+
+        return nil
+    }
+
+    private func intValue(_ value: Any?) -> Int? {
+        if let number = value as? NSNumber { return number.intValue }
+        if let int = value as? Int { return int }
+        return nil
+    }
+
+    private func int32Value(_ value: Any?) -> Int32? {
+        if let number = value as? NSNumber { return number.int32Value }
+        if let int32 = value as? Int32 { return int32 }
+        if let int = value as? Int { return Int32(int) }
+        return nil
+    }
+
+    private func windowIDValue(_ value: Any?) -> CGWindowID? {
+        if let number = value as? NSNumber { return CGWindowID(number.uint32Value) }
+        if let id = value as? CGWindowID { return id }
+        if let int = value as? Int { return CGWindowID(int) }
+        return nil
+    }
+
+    private func cgFloatValue(_ value: Any?) -> CGFloat? {
+        if let number = value as? NSNumber { return CGFloat(number.doubleValue) }
+        if let double = value as? Double { return CGFloat(double) }
+        if let int = value as? Int { return CGFloat(int) }
+        if let value = value as? CGFloat { return value }
+        return nil
     }
 
     private func ensureScreenCapturePermission() -> Bool {
