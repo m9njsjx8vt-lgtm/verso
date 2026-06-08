@@ -285,7 +285,8 @@ final class LocalAIClient {
             backend: backend,
             endpoint: endpoint,
             model: model,
-            timeout: timeout
+            timeout: timeout,
+            preserveCodeFences: preserveMarkdownAndCode
         )
         return (output, nil)
     }
@@ -318,6 +319,7 @@ final class LocalAIClient {
             endpoint: endpoint,
             model: model,
             timeout: timeoutForTextLength(text.count),
+            preserveCodeFences: preserveMarkdownAndCode,
             onChunk: onChunk
         )
         return (output, nil)
@@ -352,7 +354,8 @@ final class LocalAIClient {
             backend: backend,
             endpoint: endpoint,
             model: model,
-            timeout: timeout
+            timeout: timeout,
+            preserveCodeFences: preserveMarkdownAndCode
         )
         return (output, nil)
     }
@@ -460,7 +463,8 @@ final class LocalAIClient {
         backend: LocalAIBackend,
         endpoint: String,
         model: String,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        preserveCodeFences: Bool = false
     ) async throws -> String {
         let modelName = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !modelName.isEmpty else { throw LocalAIError.missingModel }
@@ -500,7 +504,7 @@ final class LocalAIClient {
         case .openAICompatible:
             raw = try parseOpenAICompatibleResponse(data)
         }
-        let cleaned = cleanModelOutput(raw)
+        let cleaned = cleanModelOutput(raw, preserveCodeFences: preserveCodeFences)
         guard !cleaned.isEmpty else { throw LocalAIError.invalidResponse }
         return cleaned
     }
@@ -511,6 +515,7 @@ final class LocalAIClient {
         endpoint: String,
         model: String,
         timeout: TimeInterval,
+        preserveCodeFences: Bool = false,
         onChunk: @escaping (String) async -> Void
     ) async throws -> String {
         let modelName = model.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -552,9 +557,17 @@ final class LocalAIClient {
         do {
             switch backend {
             case .ollama:
-                accumulated = try await readOllamaStream(bytes: bytes, onChunk: onChunk)
+                accumulated = try await readOllamaStream(
+                    bytes: bytes,
+                    preserveCodeFences: preserveCodeFences,
+                    onChunk: onChunk
+                )
             case .openAICompatible:
-                accumulated = try await readOpenAICompatibleStream(bytes: bytes, onChunk: onChunk)
+                accumulated = try await readOpenAICompatibleStream(
+                    bytes: bytes,
+                    preserveCodeFences: preserveCodeFences,
+                    onChunk: onChunk
+                )
             }
         } catch let urlError as URLError where urlError.code == .timedOut {
             throw LocalAIError.timedOut
@@ -564,7 +577,7 @@ final class LocalAIClient {
             throw LocalAIError.connectionFailed(error.localizedDescription)
         }
 
-        let cleaned = cleanModelOutput(accumulated)
+        let cleaned = cleanModelOutput(accumulated, preserveCodeFences: preserveCodeFences)
         guard !cleaned.isEmpty else { throw LocalAIError.invalidResponse }
         return cleaned
     }
@@ -610,6 +623,7 @@ final class LocalAIClient {
 
     private func readOllamaStream(
         bytes: URLSession.AsyncBytes,
+        preserveCodeFences: Bool,
         onChunk: @escaping (String) async -> Void
     ) async throws -> String {
         var accumulated = ""
@@ -633,7 +647,7 @@ final class LocalAIClient {
                let content = message["content"] as? String,
                !content.isEmpty {
                 accumulated += content
-                let cleaned = cleanModelOutput(accumulated)
+                let cleaned = cleanModelOutput(accumulated, preserveCodeFences: preserveCodeFences)
                 if !cleaned.isEmpty {
                     await onChunk(cleaned)
                 }
@@ -649,6 +663,7 @@ final class LocalAIClient {
 
     private func readOpenAICompatibleStream(
         bytes: URLSession.AsyncBytes,
+        preserveCodeFences: Bool,
         onChunk: @escaping (String) async -> Void
     ) async throws -> String {
         var accumulated = ""
@@ -681,7 +696,7 @@ final class LocalAIClient {
             }
 
             accumulated += content
-            let cleaned = cleanModelOutput(accumulated)
+            let cleaned = cleanModelOutput(accumulated, preserveCodeFences: preserveCodeFences)
             if !cleaned.isEmpty {
                 await onChunk(cleaned)
             }
@@ -793,9 +808,11 @@ final class LocalAIClient {
         return content
     }
 
-    private func cleanModelOutput(_ raw: String) -> String {
+    private func cleanModelOutput(_ raw: String, preserveCodeFences: Bool = false) -> String {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        text = strippingSurroundingCodeFence(from: text)
+        if !preserveCodeFences {
+            text = strippingSurroundingCodeFence(from: text)
+        }
 
         for tag in ["think", "thinking", "reasoning"] {
             text = removingTag(named: tag, from: text)
@@ -824,7 +841,9 @@ final class LocalAIClient {
                 didStripPrefix = true
             }
         }
-        text = strippingSurroundingCodeFence(from: text)
+        if !preserveCodeFences {
+            text = strippingSurroundingCodeFence(from: text)
+        }
         text = strippingSurroundingQuotes(from: text)
         return text
     }
