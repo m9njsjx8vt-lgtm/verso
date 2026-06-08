@@ -391,21 +391,18 @@ final class WorkspaceViewModel: ObservableObject {
     }
 
     private func resetResultAfterInputChange() {
-        translateTask?.cancel()
-        translateTask = nil
-        translationRunID = UUID()
-        isTranslating = false
-
-        resultText = ""
-        errorText = nil
-        failedUsingLocalAI = false
-        sourceTargetSummary = ""
-        statusText = inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? ""
-            : "Edited · translate to refresh"
+        resetResultForRefresh(statusMessage: "Edited · translate to refresh")
     }
 
     private func resetResultAfterTargetChange() {
+        resetResultForRefresh(statusMessage: "Target changed · translate to refresh")
+    }
+
+    func resetResultAfterStyleChange() {
+        resetResultForRefresh(statusMessage: "Style changed · translate to refresh")
+    }
+
+    private func resetResultForRefresh(statusMessage: String) {
         translateTask?.cancel()
         translateTask = nil
         translationRunID = UUID()
@@ -417,7 +414,7 @@ final class WorkspaceViewModel: ObservableObject {
         sourceTargetSummary = ""
         statusText = inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? ""
-            : "Target changed · translate to refresh"
+            : statusMessage
     }
 
     private func applyTranslationChunk(
@@ -492,7 +489,9 @@ struct WorkspaceView: View {
         Menu {
             ForEach(TranslationStyle.allCases) { style in
                 Button {
+                    guard settings.translationStyle != style.rawValue else { return }
                     settings.translationStyle = style.rawValue
+                    viewModel.resetResultAfterStyleChange()
                 } label: {
                     if settings.translationStyle == style.rawValue {
                         Label(style.title, systemImage: "checkmark")
