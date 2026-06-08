@@ -60,7 +60,7 @@ final class PopupController {
 
         activeOriginal = originalText
         historyRecorded = false
-        activeUseLocalAI = settings.usesLocalAI || !network.isOnline
+        activeUseLocalAI = settings.shouldRouteToLocalAI(isOnline: network.isOnline)
 
         let pair = LanguageDetector.detect(
             originalText,

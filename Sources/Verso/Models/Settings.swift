@@ -330,6 +330,14 @@ final class AppSettings: ObservableObject {
         selectedTranslationProvider == .localAI
     }
 
+    var hasGeminiAPIKey: Bool {
+        !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func shouldRouteToLocalAI(isOnline: Bool) -> Bool {
+        usesLocalAI || !isOnline || !hasGeminiAPIKey
+    }
+
     var primaryProviderTitle: String {
         selectedTranslationProvider.title
     }

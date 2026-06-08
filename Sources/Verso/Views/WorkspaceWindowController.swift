@@ -133,7 +133,7 @@ final class WorkspaceViewModel: ObservableObject {
         translationRunID = runID
         errorText = nil
         resultText = ""
-        let useLocalAI = settings.usesLocalAI || !network.isOnline
+        let useLocalAI = settings.shouldRouteToLocalAI(isOnline: network.isOnline)
         let providerTitle = settings.providerTitle(useLocalAI: useLocalAI)
 
         let forceTarget = selectedTarget == "auto" ? nil : selectedTarget

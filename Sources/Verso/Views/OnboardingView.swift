@@ -222,6 +222,9 @@ struct OnboardingView: View {
             Text("あとで Settings → General → AI Engine から Gemini / Local AI を切り替えられます。")
                 .font(.caption)
                 .foregroundColor(.secondary)
+            Text("APIキーが空欄、またはオフライン時は Local AI に自動切替します。")
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
     }
 

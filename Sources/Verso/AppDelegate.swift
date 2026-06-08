@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import Sparkle
 
@@ -27,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var historyWindowController: HistoryWindowController?
     private var onboardingWindowController: OnboardingWindowController?
     private var workspaceWindowController: WorkspaceWindowController?
+    private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -64,6 +66,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             Task { @MainActor in self?.rebuildStatusBarMenu() }
         }
+        network.$isOnline
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    self?.rebuildStatusBarMenu()
+                }
+            }
+            .store(in: &cancellables)
 
         if !settings.hasCompletedOnboarding {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -134,8 +144,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var aiEngineMenuTitle: String {
-        let model = settings.usesLocalAI ? settings.localAIModel : settings.model
-        return cappedMenuTitle("AI: \(settings.primaryProviderTitle) · \(compactModelName(model))")
+        let useLocalAI = settings.shouldRouteToLocalAI(isOnline: network.isOnline)
+        let model = useLocalAI ? settings.localAIModel : settings.model
+        let provider: String
+        if useLocalAI, !settings.usesLocalAI {
+            provider = network.isOnline ? "Local AI fallback" : "Local AI offline"
+        } else {
+            provider = settings.providerTitle(useLocalAI: useLocalAI)
+        }
+        return cappedMenuTitle("AI: \(provider) · \(compactModelName(model))")
     }
 
     private func compactModelName(_ raw: String) -> String {

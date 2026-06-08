@@ -183,6 +183,9 @@ struct SettingsView: View {
                 .textFieldStyle(.roundedBorder)
                 Button(showApiKey ? "Hide" : "Show") { showApiKey.toggle() }
             }
+            Text("APIキーが空欄、またはオフライン時は Local AI に自動切替します。")
+                .font(.caption)
+                .foregroundColor(.secondary)
 
             Text("Model").font(.subheadline).fontWeight(.semibold)
             Picker("", selection: $settings.model) {
