@@ -125,12 +125,8 @@ final class WorkspaceViewModel: ObservableObject {
         translateTask?.cancel()
         errorText = nil
         resultText = ""
-
-        guard settings.usesLocalAI || network.isOnline else {
-            errorText = GeminiError.offline.localizedDescription
-            statusText = ""
-            return
-        }
+        let useLocalAI = settings.usesLocalAI || !network.isOnline
+        let providerTitle = settings.providerTitle(useLocalAI: useLocalAI)
 
         let forceTarget = selectedTarget == "auto" ? nil : selectedTarget
         let pair = LanguageDetector.detect(
@@ -149,7 +145,7 @@ final class WorkspaceViewModel: ObservableObject {
             target: pair.targetShort,
             glossary: glossaryPrompt,
             context: context,
-            model: settings.activeModelKey,
+            model: settings.modelKey(useLocalAI: useLocalAI),
             preserveMarkdownAndCode: settings.preserveMarkdownAndCode
         )
 
@@ -157,20 +153,20 @@ final class WorkspaceViewModel: ObservableObject {
            let cached = cache.get(cacheKey)?.geminiTranslation,
            !cached.isEmpty {
             resultText = cached
-            statusText = "Cache · \(settings.primaryProviderTitle) · \(sourceTargetSummary)"
+            statusText = "Cache · \(providerTitle) · \(sourceTargetSummary)"
             recordHistory(sourceText: text, translation: cached, pair: pair)
             return
         }
 
         isTranslating = true
-        statusText = "Translating · \(settings.primaryProviderTitle) · \(sourceTargetSummary)"
+        statusText = "Translating · \(providerTitle) · \(sourceTargetSummary)"
 
         translateTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.isTranslating = false }
             do {
                 let result: (text: String, usage: GeminiUsage?)
-                if self.settings.usesLocalAI {
+                if useLocalAI {
                     result = try await self.localAIClient.translateStreaming(
                         text: text,
                         from: pair.sourceFull,
@@ -186,7 +182,7 @@ final class WorkspaceViewModel: ObservableObject {
                             await MainActor.run {
                                 guard let self, !Task.isCancelled else { return }
                                 self.resultText = partial
-                                self.statusText = "Translating · \(self.settings.primaryProviderTitle) · \(self.sourceTargetSummary)"
+                                self.statusText = "Translating · \(providerTitle) · \(self.sourceTargetSummary)"
                             }
                         }
                     )
@@ -205,7 +201,7 @@ final class WorkspaceViewModel: ObservableObject {
                             await MainActor.run {
                                 guard let self, !Task.isCancelled else { return }
                                 self.resultText = partial
-                                self.statusText = "Translating · \(self.settings.primaryProviderTitle) · \(self.sourceTargetSummary)"
+                                self.statusText = "Translating · \(providerTitle) · \(self.sourceTargetSummary)"
                             }
                         }
                     )
@@ -213,10 +209,10 @@ final class WorkspaceViewModel: ObservableObject {
                 if Task.isCancelled { return }
 
                 self.resultText = result.text
-                self.statusText = "Done · \(self.settings.primaryProviderTitle) · \(self.sourceTargetSummary)"
+                self.statusText = "Done · \(providerTitle) · \(self.sourceTargetSummary)"
                 if let u = result.usage {
                     self.usage.record(
-                        model: self.settings.activeModelKey,
+                        model: self.settings.modelKey(useLocalAI: useLocalAI),
                         promptTokens: u.promptTokens,
                         responseTokens: u.responseTokens
                     )

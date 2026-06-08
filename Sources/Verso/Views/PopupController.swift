@@ -28,6 +28,7 @@ final class PopupController {
     private var activeLangPair: LanguageDetector.Pair?
     private var activeOriginal: String = ""
     private var historyRecorded: Bool = false
+    private var activeUseLocalAI: Bool = false
 
     /// Conversation context: prior (original, translation) pairs from same popup session.
     /// Only accumulated when settings.stayOpen is true.
@@ -59,6 +60,7 @@ final class PopupController {
 
         activeOriginal = originalText
         historyRecorded = false
+        activeUseLocalAI = settings.usesLocalAI || !network.isOnline
 
         let pair = LanguageDetector.detect(
             originalText,
@@ -71,6 +73,7 @@ final class PopupController {
         let deepLConfigured = !settings.deeplApiKey.isEmpty
 
         close(restoreFocus: false, preserveConversation: settings.stayOpen)
+        let useLocalAI = activeUseLocalAI
 
         let viewModel = PopupViewModel(
             originalText: originalText,
@@ -80,9 +83,9 @@ final class PopupController {
             stayOpen: settings.stayOpen,
             privacyMode: settings.privacyMode,
             conversationDepth: conversationHistory.count,
-            aiProviderTitle: settings.primaryProviderTitle,
-            aiProviderIcon: settings.primaryProviderIcon,
-            allowsCloudPro: !settings.usesLocalAI,
+            aiProviderTitle: settings.providerTitle(useLocalAI: useLocalAI),
+            aiProviderIcon: settings.providerIcon(useLocalAI: useLocalAI),
+            allowsCloudPro: !useLocalAI,
             onInsert: { [weak self] t in self?.insertAndClose(t) },
             onCopy: { [weak self] t in
                 NSPasteboard.general.clearContents()
@@ -140,15 +143,6 @@ final class PopupController {
         window = popup
         popup.showAtMouse()
 
-        // Offline guard: cloud translation needs the internet; local AI does not.
-        if !settings.usesLocalAI && !network.isOnline {
-            viewModel.geminiState = .failed("オフライン中。ネットワーク接続を確認してから Retry を押してください。")
-            if deepLConfigured {
-                viewModel.deepLState = .failed("オフライン中。")
-            }
-            return
-        }
-
         let cacheKey = makeCacheKey(text: originalText, pair: pair)
 
         if settings.cacheEnabled, let entry = cache.get(cacheKey) {
@@ -174,6 +168,7 @@ final class PopupController {
         let appHint = sourceApp?.localizedName
 
         let extendedContext = activePromptContext()
+        let useLocalAI = shouldUseLocalAIForCurrentRequest
 
         // DeepL preview
         if !settings.deeplApiKey.isEmpty && network.isOnline {
@@ -205,7 +200,7 @@ final class PopupController {
             guard let self = self, let viewModel = viewModel else { return }
             do {
                 let result: (text: String, usage: GeminiUsage?)
-                if self.settings.usesLocalAI {
+                if useLocalAI {
                     result = try await self.localAIClient.translateStreaming(
                         text: originalText,
                         from: pair.sourceFull,
@@ -244,7 +239,7 @@ final class PopupController {
                 if Task.isCancelled { return }
                 viewModel.geminiState = .ok(result.text)
                 if let u = result.usage {
-                    self.usage.record(model: self.settings.activeModelKey,
+                    self.usage.record(model: self.settings.modelKey(useLocalAI: useLocalAI),
                                       promptTokens: u.promptTokens,
                                       responseTokens: u.responseTokens)
                 }
@@ -283,7 +278,7 @@ final class PopupController {
             target: pair.targetShort,
             glossary: glossary.formattedForPrompt(),
             context: activePromptContext(),
-            model: settings.activeModelKey,
+            model: settings.modelKey(useLocalAI: shouldUseLocalAIForCurrentRequest),
             preserveMarkdownAndCode: settings.preserveMarkdownAndCode
         )
     }
@@ -294,13 +289,14 @@ final class PopupController {
         let snapshot = vm.geminiText
         vm.undoStack.append(snapshot)
         vm.isRefining = true
+        let useLocalAI = shouldUseLocalAIForCurrentRequest
 
         refineTask?.cancel()
         refineTask = Task { @MainActor [weak self, weak vm] in
             guard let self = self, let vm = vm else { return }
             do {
                 let result: (text: String, usage: GeminiUsage?)
-                if self.settings.usesLocalAI {
+                if useLocalAI {
                     result = try await self.localAIClient.refine(
                         originalText: vm.originalText,
                         currentTranslation: snapshot,
@@ -332,7 +328,7 @@ final class PopupController {
                 vm.geminiState = .ok(result.text)
                 vm.isRefining = false
                 if let u = result.usage {
-                    self.usage.record(model: self.settings.activeModelKey,
+                    self.usage.record(model: self.settings.modelKey(useLocalAI: useLocalAI),
                                       promptTokens: u.promptTokens,
                                       responseTokens: u.responseTokens)
                 }
@@ -415,6 +411,7 @@ final class PopupController {
               pair.targetShort == "JA", vm.isGeminiOk else { return }
         let snapshot = vm.geminiText
         vm.isRefining = true
+        let useLocalAI = shouldUseLocalAIForCurrentRequest
 
         furiganaTask?.cancel()
         furiganaTask = Task { @MainActor [weak self, weak vm] in
@@ -430,7 +427,7 @@ final class PopupController {
                 \(snapshot)
                 """
                 let result: (text: String, usage: GeminiUsage?)
-                if self.settings.usesLocalAI {
+                if useLocalAI {
                     result = try await self.localAIClient.translate(
                         text: prompt,
                         from: "Japanese",
@@ -469,6 +466,10 @@ final class PopupController {
         }
     }
 
+    private var shouldUseLocalAIForCurrentRequest: Bool {
+        activeUseLocalAI
+    }
+
     private func saveEdit(_ edited: String) {
         guard let vm = currentViewModel,
               let pair = activeLangPair else { return }
@@ -483,13 +484,14 @@ final class PopupController {
             return
         }
         vm.showToast("保存しました — 用語を学習中…", duration: 2.0)
+        let useLocalAI = shouldUseLocalAIForCurrentRequest
 
         learnTask?.cancel()
         learnTask = Task { @MainActor [weak self, weak vm] in
             guard let self = self, let vm = vm else { return }
             do {
                 let pairs: [(term: String, translation: String)]
-                if self.settings.usesLocalAI {
+                if useLocalAI {
                     pairs = try await self.localAIClient.extractGlossaryDiff(
                         originalText: vm.originalText,
                         modelTranslation: originalTranslation,
@@ -603,13 +605,14 @@ final class PopupController {
 
         let priorMessages = Array(vm.chatMessages.dropLast())
         let translation = vm.geminiText
+        let useLocalAI = shouldUseLocalAIForCurrentRequest
 
         chatTask?.cancel()
         chatTask = Task { @MainActor [weak self, weak vm] in
             guard let self = self, let vm = vm else { return }
             do {
                 let result: (text: String, usage: GeminiUsage?)
-                if self.settings.usesLocalAI {
+                if useLocalAI {
                     result = try await self.localAIClient.chatAboutTranslation(
                         originalText: vm.originalText,
                         translation: translation,
@@ -637,7 +640,7 @@ final class PopupController {
                 vm.chatMessages.append(ChatMessage(role: .assistant, content: result.text))
                 vm.isChatThinking = false
                 if let u = result.usage {
-                    self.usage.record(model: self.settings.activeModelKey,
+                    self.usage.record(model: self.settings.modelKey(useLocalAI: useLocalAI),
                                       promptTokens: u.promptTokens,
                                       responseTokens: u.responseTokens)
                 }

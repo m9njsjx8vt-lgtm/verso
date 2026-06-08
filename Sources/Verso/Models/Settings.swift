@@ -291,15 +291,28 @@ final class AppSettings: ObservableObject {
     }
 
     var activeModelKey: String {
-        if usesLocalAI {
-            return [
-                "local",
-                selectedLocalAIBackend.rawValue,
-                localAIEndpoint.trimmingCharacters(in: .whitespacesAndNewlines),
-                localAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
-            ].joined(separator: ":")
-        }
-        return model
+        modelKey(useLocalAI: usesLocalAI)
+    }
+
+    var localAIActiveModelKey: String {
+        [
+            "local",
+            selectedLocalAIBackend.rawValue,
+            localAIEndpoint.trimmingCharacters(in: .whitespacesAndNewlines),
+            localAIModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        ].joined(separator: ":")
+    }
+
+    func providerTitle(useLocalAI: Bool) -> String {
+        useLocalAI ? TranslationProvider.localAI.title : selectedTranslationProvider.title
+    }
+
+    func providerIcon(useLocalAI: Bool) -> String {
+        useLocalAI ? TranslationProvider.localAI.icon : selectedTranslationProvider.icon
+    }
+
+    func modelKey(useLocalAI: Bool) -> String {
+        useLocalAI ? localAIActiveModelKey : model
     }
 
     var selectedTranslationStyle: TranslationStyle {

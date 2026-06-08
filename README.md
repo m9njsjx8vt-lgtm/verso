@@ -53,6 +53,7 @@ Verso defaults to **Local AI** for offline-first personal use, and can translate
 - Settings can open LM Studio directly, or start `ollama serve` when the Ollama CLI is installed
 - Use **Refresh Models** in Settings to discover installed local models and choose one
 - Use **Test Local AI** in Settings to confirm the endpoint/model before relying on offline translation
+- If Gemini is selected but the Mac is offline, Verso falls back to Local AI for that request
 - DeepL preview remains cloud-only and will show as unavailable while offline
 
 ## Use
