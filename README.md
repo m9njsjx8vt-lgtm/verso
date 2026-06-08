@@ -36,12 +36,12 @@ xcodegen && open Verso.xcodeproj
 ## First-time setup
 
 1. Launch the app — a 🔤 icon appears in the menu bar
-2. Click the icon → **Settings…**
-3. In **Settings → General → AI Engine**, choose Gemini or Local AI
-4. For Gemini, paste your API key (get one free at https://aistudio.google.com/apikey)
-5. For Local AI, run Ollama or LM Studio and set the endpoint/model name
-6. (Optional) Customize the Personalization tab to teach Verso your tone and glossary
-7. Grant **Accessibility** permission when prompted (required for ⌘C×2 detection)
+2. In the welcome tour, choose **Gemini** or **Local AI**
+3. For Gemini, paste your API key (get one free at https://aistudio.google.com/apikey), or skip and add it later
+4. For Local AI, run Ollama or LM Studio, then use **Refresh Models** and **Test Local AI**
+5. (Optional) Add a DeepL API key for instant preview
+6. Grant **Accessibility** permission when prompted (required for ⌘C×2 detection)
+7. Later, use **Settings → General → AI Engine** to change providers or models
 
 ## Local AI / offline mode
 

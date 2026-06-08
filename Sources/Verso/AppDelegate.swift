@@ -267,6 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "history": showHistory()
         case "settings": openSettings()
+        case "welcome", "onboarding": showOnboarding()
         case "workspace":
             let text = comps.queryItems?.first(where: { $0.name == "text" })?.value
             let target = comps.queryItems?.first(where: { $0.name == "target" })?.value

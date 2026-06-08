@@ -5,6 +5,16 @@ struct OnboardingView: View {
     @State private var step: Int = 0
     @State private var apiKeyDraft: String = ""
     @State private var deepLDraft: String = ""
+    @State private var providerDraft: String = TranslationProvider.gemini.rawValue
+    @State private var localBackendDraft: String = LocalAIBackend.ollama.rawValue
+    @State private var localEndpointDraft: String = LocalAIBackend.ollama.defaultEndpoint
+    @State private var localModelDraft: String = "huihui_ai/qwen3-abliterated:14b"
+    @State private var isTestingLocalAI: Bool = false
+    @State private var localAITestMessage: String?
+    @State private var localAITestSucceeded: Bool = false
+    @State private var isLoadingLocalAIModels: Bool = false
+    @State private var localAIModelListMessage: String?
+    @State private var discoveredLocalAIModels: [LocalAIModelInfo] = []
 
     let onComplete: () -> Void
 
@@ -28,7 +38,7 @@ struct OnboardingView: View {
                 Group {
                     switch step {
                     case 0: welcomeStep
-                    case 1: geminiStep
+                    case 1: aiEngineStep
                     case 2: deepLStep
                     case 3: accessibilityStep
                     default: EmptyView()
@@ -64,13 +74,19 @@ struct OnboardingView: View {
         .onAppear {
             apiKeyDraft = settings.apiKey
             deepLDraft = settings.deeplApiKey
+            providerDraft = settings.translationProvider
+            localBackendDraft = settings.localAIBackend
+            localEndpointDraft = settings.localAIEndpoint
+            localModelDraft = settings.localAIModel
         }
     }
 
     private var primaryButtonTitle: String {
         if step == totalSteps - 1 { return "完了" }
-        if step == 1 && apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "スキップして次へ"
+        if step == 1,
+           selectedProvider == .gemini,
+           apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "あとで設定して次へ"
         }
         if step == 2 && deepLDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "スキップして次へ"
@@ -79,12 +95,24 @@ struct OnboardingView: View {
     }
 
     private var canAdvance: Bool {
+        if step == 1 && selectedProvider == .localAI {
+            return !localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !isTestingLocalAI
+                && !isLoadingLocalAIModels
+        }
         return true
     }
 
     private func advance() {
         // Save state at the appropriate step
-        if step == 1 { settings.apiKey = apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if step == 1 {
+            settings.translationProvider = providerDraft
+            settings.apiKey = apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            settings.localAIBackend = localBackendDraft
+            settings.localAIEndpoint = localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            settings.localAIModel = localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         if step == 2 { settings.deeplApiKey = deepLDraft.trimmingCharacters(in: .whitespacesAndNewlines) }
         if step == totalSteps - 1 {
             settings.hasCompletedOnboarding = true
@@ -92,6 +120,14 @@ struct OnboardingView: View {
         } else {
             step += 1
         }
+    }
+
+    private var selectedProvider: TranslationProvider {
+        TranslationProvider(rawValue: providerDraft) ?? .gemini
+    }
+
+    private var selectedLocalBackend: LocalAIBackend {
+        LocalAIBackend(rawValue: localBackendDraft) ?? .ollama
     }
 
     // MARK: - Steps
@@ -126,15 +162,33 @@ struct OnboardingView: View {
         }
     }
 
-    private var geminiStep: some View {
+    private var aiEngineStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Gemini APIキー（任意）", systemImage: "key.fill")
+            Label("AI Engineを選択", systemImage: "sparkles")
                 .font(.title2)
                 .bold()
-            Text("クラウド翻訳を使う場合は Gemini APIキーを登録します。ローカルAIだけで使う場合は空欄のまま進めます。")
+            Text("クラウドのGeminiか、ネットなしでも動くLocal AIを選べます。あとから Settings で変更できます。")
                 .font(.body)
                 .foregroundColor(.secondary)
 
+            Picker("", selection: $providerDraft) {
+                ForEach(TranslationProvider.allCases) { provider in
+                    Text(provider.title).tag(provider.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if selectedProvider == .gemini {
+                geminiEngineSettings
+            } else {
+                localAIEngineSettings
+            }
+        }
+    }
+
+    private var geminiEngineSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("1.  下のボタンで Google AI Studio を開く")
                 Text("2.  「Get API key」→「Create API key」")
@@ -160,6 +214,123 @@ struct OnboardingView: View {
                 .font(.system(.body, design: .monospaced))
 
             Text("あとで Settings → General → AI Engine から Gemini / Local AI を切り替えられます。")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var localAIEngineSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("1.  Ollama または LM Studio のローカルサーバーを起動")
+                Text("2.  Backend と Endpoint を確認")
+                Text("3.  Refresh Models でモデルを選択")
+                Text("4.  Test Local AI で接続確認")
+            }
+            .font(.callout)
+            .padding(12)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(8)
+
+            Picker("Backend", selection: $localBackendDraft) {
+                ForEach(LocalAIBackend.allCases) { backend in
+                    Text(backend.title).tag(backend.rawValue)
+                }
+            }
+            .pickerStyle(.menu)
+            .onChange(of: localBackendDraft) { _ in
+                if localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || LocalAIBackend.allCases.map(\.defaultEndpoint).contains(localEndpointDraft) {
+                    localEndpointDraft = selectedLocalBackend.defaultEndpoint
+                }
+                discoveredLocalAIModels = []
+                localAIModelListMessage = nil
+                localAITestMessage = nil
+            }
+
+            TextField(selectedLocalBackend.endpointHelp, text: $localEndpointDraft)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+
+            TextField("Model name", text: $localModelDraft)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+
+            HStack(spacing: 8) {
+                Button {
+                    refreshLocalAIModels()
+                } label: {
+                    Label(
+                        isLoadingLocalAIModels ? "Loading…" : "Refresh Models",
+                        systemImage: "arrow.clockwise"
+                    )
+                }
+                .disabled(isLoadingLocalAIModels
+                    || localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                if isLoadingLocalAIModels {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                if !discoveredLocalAIModels.isEmpty {
+                    Menu {
+                        ForEach(discoveredLocalAIModels) { model in
+                            Button {
+                                localModelDraft = model.name
+                            } label: {
+                                if model.name == localModelDraft {
+                                    Label(modelMenuTitle(model), systemImage: "checkmark")
+                                } else {
+                                    Text(modelMenuTitle(model))
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Choose Model", systemImage: "list.bullet")
+                    }
+                }
+            }
+
+            if let message = localAIModelListMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    testLocalAIConnection()
+                } label: {
+                    Label(
+                        isTestingLocalAI ? "Checking…" : "Test Local AI",
+                        systemImage: "checkmark.circle"
+                    )
+                }
+                .disabled(isTestingLocalAI
+                    || localEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                if isTestingLocalAI {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                if let message = localAITestMessage {
+                    Label(
+                        message,
+                        systemImage: localAITestSucceeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundColor(localAITestSucceeded ? .green : .orange)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+                }
+            }
+
+            Text("Local AIを選ぶと、インターネット接続がなくてもメイン翻訳を実行できます。DeepLプレビューだけはクラウド接続が必要です。")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
@@ -223,6 +394,81 @@ struct OnboardingView: View {
                     .foregroundColor(.secondary)
             }
         }
+    }
+
+    private func refreshLocalAIModels() {
+        let backend = selectedLocalBackend
+        let endpoint = localEndpointDraft
+
+        isLoadingLocalAIModels = true
+        localAIModelListMessage = nil
+        discoveredLocalAIModels = []
+
+        Task {
+            do {
+                let models = try await LocalAIClient().listModels(
+                    backend: backend,
+                    endpoint: endpoint
+                )
+                await MainActor.run {
+                    discoveredLocalAIModels = models
+                    localAIModelListMessage = models.isEmpty
+                        ? "モデルが見つかりません"
+                        : "\(models.count) models found"
+                    if localModelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       let first = models.first {
+                        localModelDraft = first.name
+                    }
+                    isLoadingLocalAIModels = false
+                }
+            } catch {
+                await MainActor.run {
+                    localAIModelListMessage = error.localizedDescription
+                    isLoadingLocalAIModels = false
+                }
+            }
+        }
+    }
+
+    private func testLocalAIConnection() {
+        let backend = selectedLocalBackend
+        let endpoint = localEndpointDraft
+        let model = localModelDraft
+
+        isTestingLocalAI = true
+        localAITestMessage = nil
+        localAITestSucceeded = false
+
+        Task {
+            do {
+                let reply = try await LocalAIClient().healthCheck(
+                    backend: backend,
+                    endpoint: endpoint,
+                    model: model
+                )
+                await MainActor.run {
+                    localAITestSucceeded = true
+                    localAITestMessage = "接続OK: \(reply.prefix(40))"
+                    isTestingLocalAI = false
+                }
+            } catch {
+                await MainActor.run {
+                    localAITestSucceeded = false
+                    localAITestMessage = error.localizedDescription
+                    isTestingLocalAI = false
+                }
+            }
+        }
+    }
+
+    private func modelMenuTitle(_ model: LocalAIModelInfo) -> String {
+        guard let size = model.sizeBytes, size > 0 else {
+            return model.name
+        }
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB]
+        formatter.countStyle = .file
+        return "\(model.name)  ·  \(formatter.string(fromByteCount: size))"
     }
 }
 
