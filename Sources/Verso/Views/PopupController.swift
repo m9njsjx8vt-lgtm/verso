@@ -249,11 +249,8 @@ final class PopupController {
                             throw error
                         }
                         actualUseLocalAI = true
-                        viewModel.aiProviderTitle = self.settings.providerTitle(useLocalAI: true)
-                        viewModel.aiProviderIcon = self.settings.providerIcon(useLocalAI: true)
-                        viewModel.allowsCloudPro = false
+                        self.switchActiveProviderToLocalAI(viewModel, message: "Geminiが使えないためLocal AIへ切替")
                         viewModel.geminiState = .loading
-                        viewModel.showToast("Geminiが使えないためLocal AIへ切替")
                         result = try await translateWithLocalAI()
                     }
                 }
@@ -318,6 +315,14 @@ final class PopupController {
         return geminiError.canFallbackToLocalAI
     }
 
+    private func switchActiveProviderToLocalAI(_ viewModel: PopupViewModel, message: String) {
+        activeUseLocalAI = true
+        viewModel.aiProviderTitle = settings.providerTitle(useLocalAI: true)
+        viewModel.aiProviderIcon = settings.providerIcon(useLocalAI: true)
+        viewModel.allowsCloudPro = false
+        viewModel.showToast(message)
+    }
+
     private func refine(instruction: String) {
         guard let vm = currentViewModel, vm.isGeminiOk,
               let pair = activeLangPair else { return }
@@ -331,6 +336,7 @@ final class PopupController {
             guard let self = self, let vm = vm else { return }
             do {
                 let result: (text: String, usage: GeminiUsage?)
+                var actualUseLocalAI = useLocalAI
                 if useLocalAI {
                     result = try await self.localAIClient.refine(
                         originalText: vm.originalText,
@@ -346,24 +352,45 @@ final class PopupController {
                         model: self.settings.localAIModel
                     )
                 } else {
-                    result = try await self.geminiClient.refine(
-                        originalText: vm.originalText,
-                        currentTranslation: snapshot,
-                        instruction: instruction,
-                        from: pair.sourceFull,
-                        to: pair.targetFull,
-                        context: self.activePromptContext(),
-                        glossary: self.glossary.formattedForPrompt(),
-                        preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode,
-                        model: self.settings.model,
-                        apiKey: self.settings.apiKey
-                    )
+                    do {
+                        result = try await self.geminiClient.refine(
+                            originalText: vm.originalText,
+                            currentTranslation: snapshot,
+                            instruction: instruction,
+                            from: pair.sourceFull,
+                            to: pair.targetFull,
+                            context: self.activePromptContext(),
+                            glossary: self.glossary.formattedForPrompt(),
+                            preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode,
+                            model: self.settings.model,
+                            apiKey: self.settings.apiKey
+                        )
+                    } catch {
+                        guard self.canFallbackToLocalAI(after: error, currentlyUsingLocalAI: useLocalAI) else {
+                            throw error
+                        }
+                        actualUseLocalAI = true
+                        self.switchActiveProviderToLocalAI(vm, message: "調整をLocal AIで継続")
+                        result = try await self.localAIClient.refine(
+                            originalText: vm.originalText,
+                            currentTranslation: snapshot,
+                            instruction: instruction,
+                            from: pair.sourceFull,
+                            to: pair.targetFull,
+                            context: self.activePromptContext(),
+                            glossary: self.glossary.formattedForPrompt(),
+                            preserveMarkdownAndCode: self.settings.preserveMarkdownAndCode,
+                            backend: self.settings.selectedLocalAIBackend,
+                            endpoint: self.settings.localAIEndpoint,
+                            model: self.settings.localAIModel
+                        )
+                    }
                 }
                 if Task.isCancelled { vm.isRefining = false; return }
                 vm.geminiState = .ok(result.text)
                 vm.isRefining = false
                 if let u = result.usage {
-                    self.usage.record(model: self.settings.modelKey(useLocalAI: useLocalAI),
+                    self.usage.record(model: self.settings.modelKey(useLocalAI: actualUseLocalAI),
                                       promptTokens: u.promptTokens,
                                       responseTokens: u.responseTokens)
                 }
@@ -462,6 +489,7 @@ final class PopupController {
                 \(snapshot)
                 """
                 let result: (text: String, usage: GeminiUsage?)
+                var actualUseLocalAI = useLocalAI
                 if useLocalAI {
                     result = try await self.localAIClient.translate(
                         text: prompt,
@@ -476,23 +504,48 @@ final class PopupController {
                         model: self.settings.localAIModel
                     )
                 } else {
-                    result = try await self.geminiClient.translate(
-                        text: prompt,
-                        from: "Japanese",
-                        to: "Japanese (with furigana)",
-                        context: nil,
-                        glossary: nil,
-                        sourceAppHint: nil,
-                        preserveMarkdownAndCode: false,
-                        model: self.settings.model,
-                        apiKey: self.settings.apiKey
-                    )
+                    do {
+                        result = try await self.geminiClient.translate(
+                            text: prompt,
+                            from: "Japanese",
+                            to: "Japanese (with furigana)",
+                            context: nil,
+                            glossary: nil,
+                            sourceAppHint: nil,
+                            preserveMarkdownAndCode: false,
+                            model: self.settings.model,
+                            apiKey: self.settings.apiKey
+                        )
+                    } catch {
+                        guard self.canFallbackToLocalAI(after: error, currentlyUsingLocalAI: useLocalAI) else {
+                            throw error
+                        }
+                        actualUseLocalAI = true
+                        self.switchActiveProviderToLocalAI(vm, message: "ふりがなをLocal AIで継続")
+                        result = try await self.localAIClient.translate(
+                            text: prompt,
+                            from: "Japanese",
+                            to: "Japanese (with furigana)",
+                            context: nil,
+                            glossary: nil,
+                            sourceAppHint: nil,
+                            preserveMarkdownAndCode: false,
+                            backend: self.settings.selectedLocalAIBackend,
+                            endpoint: self.settings.localAIEndpoint,
+                            model: self.settings.localAIModel
+                        )
+                    }
                 }
                 if Task.isCancelled { vm.isRefining = false; return }
                 vm.undoStack.append(snapshot)
                 vm.geminiState = .ok(result.text)
                 vm.isRefining = false
                 vm.showToast("ふりがな付与 — Undo で元に戻せます")
+                if let u = result.usage {
+                    self.usage.record(model: self.settings.modelKey(useLocalAI: actualUseLocalAI),
+                                      promptTokens: u.promptTokens,
+                                      responseTokens: u.responseTokens)
+                }
             } catch {
                 if Task.isCancelled { vm.isRefining = false; return }
                 vm.isRefining = false
@@ -538,15 +591,32 @@ final class PopupController {
                         model: self.settings.localAIModel
                     )
                 } else {
-                    pairs = try await self.geminiClient.extractGlossaryDiff(
-                        originalText: vm.originalText,
-                        modelTranslation: originalTranslation,
-                        userTranslation: trimmed,
-                        from: pair.sourceFull,
-                        to: pair.targetFull,
-                        model: self.settings.model,
-                        apiKey: self.settings.apiKey
-                    )
+                    do {
+                        pairs = try await self.geminiClient.extractGlossaryDiff(
+                            originalText: vm.originalText,
+                            modelTranslation: originalTranslation,
+                            userTranslation: trimmed,
+                            from: pair.sourceFull,
+                            to: pair.targetFull,
+                            model: self.settings.model,
+                            apiKey: self.settings.apiKey
+                        )
+                    } catch {
+                        guard self.canFallbackToLocalAI(after: error, currentlyUsingLocalAI: useLocalAI) else {
+                            throw error
+                        }
+                        self.switchActiveProviderToLocalAI(vm, message: "用語学習をLocal AIで継続")
+                        pairs = try await self.localAIClient.extractGlossaryDiff(
+                            originalText: vm.originalText,
+                            modelTranslation: originalTranslation,
+                            userTranslation: trimmed,
+                            from: pair.sourceFull,
+                            to: pair.targetFull,
+                            backend: self.settings.selectedLocalAIBackend,
+                            endpoint: self.settings.localAIEndpoint,
+                            model: self.settings.localAIModel
+                        )
+                    }
                 }
                 if Task.isCancelled { return }
                 if pairs.isEmpty {
@@ -647,6 +717,7 @@ final class PopupController {
             guard let self = self, let vm = vm else { return }
             do {
                 let result: (text: String, usage: GeminiUsage?)
+                var actualUseLocalAI = useLocalAI
                 if useLocalAI {
                     result = try await self.localAIClient.chatAboutTranslation(
                         originalText: vm.originalText,
@@ -660,22 +731,41 @@ final class PopupController {
                         model: self.settings.localAIModel
                     )
                 } else {
-                    result = try await self.geminiClient.chatAboutTranslation(
-                        originalText: vm.originalText,
-                        translation: translation,
-                        sourceLang: pair.sourceFull,
-                        targetLang: pair.targetFull,
-                        priorMessages: priorMessages,
-                        newQuestion: trimmed,
-                        model: self.settings.model,
-                        apiKey: self.settings.apiKey
-                    )
+                    do {
+                        result = try await self.geminiClient.chatAboutTranslation(
+                            originalText: vm.originalText,
+                            translation: translation,
+                            sourceLang: pair.sourceFull,
+                            targetLang: pair.targetFull,
+                            priorMessages: priorMessages,
+                            newQuestion: trimmed,
+                            model: self.settings.model,
+                            apiKey: self.settings.apiKey
+                        )
+                    } catch {
+                        guard self.canFallbackToLocalAI(after: error, currentlyUsingLocalAI: useLocalAI) else {
+                            throw error
+                        }
+                        actualUseLocalAI = true
+                        self.switchActiveProviderToLocalAI(vm, message: "チャットをLocal AIで継続")
+                        result = try await self.localAIClient.chatAboutTranslation(
+                            originalText: vm.originalText,
+                            translation: translation,
+                            sourceLang: pair.sourceFull,
+                            targetLang: pair.targetFull,
+                            priorMessages: priorMessages,
+                            newQuestion: trimmed,
+                            backend: self.settings.selectedLocalAIBackend,
+                            endpoint: self.settings.localAIEndpoint,
+                            model: self.settings.localAIModel
+                        )
+                    }
                 }
                 if Task.isCancelled { vm.isChatThinking = false; return }
                 vm.chatMessages.append(ChatMessage(role: .assistant, content: result.text))
                 vm.isChatThinking = false
                 if let u = result.usage {
-                    self.usage.record(model: self.settings.modelKey(useLocalAI: useLocalAI),
+                    self.usage.record(model: self.settings.modelKey(useLocalAI: actualUseLocalAI),
                                       promptTokens: u.promptTokens,
                                       responseTokens: u.responseTokens)
                 }
