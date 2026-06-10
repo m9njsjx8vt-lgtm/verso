@@ -315,16 +315,16 @@ final class LocalAIClient {
             sourceAppHint: sourceAppHint,
             preserveMarkdownAndCode: preserveMarkdownAndCode
         )
-        let output = try await complete(
+        let output = try await completeStreaming(
             prompt: prompt,
             systemPrompt: Self.translationSystemPrompt(targetLanguage: to),
             backend: backend,
             endpoint: endpoint,
             model: model,
             timeout: timeoutForTextLength(text.count),
-            preserveCodeFences: preserveMarkdownAndCode
+            preserveCodeFences: preserveMarkdownAndCode,
+            onChunk: onChunk
         )
-        await onChunk(output)
         return (output, nil)
     }
 
@@ -632,12 +632,19 @@ final class LocalAIClient {
 
         switch backend {
         case .ollama:
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
+            var body: [String: Any] = [
                 "model": modelName,
                 "messages": chatMessages(systemPrompt: systemPrompt, prompt: prompt),
                 "stream": streaming,
                 "options": ["temperature": 0.1]
-            ])
+            ]
+            // Skip the reasoning phase entirely for thinking-capable models:
+            // the popup gets the translation immediately instead of waiting
+            // through (or filtering out) a hidden chain of thought.
+            if Self.isThinkingCapableModel(modelName) {
+                body["think"] = false
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
         case .openAICompatible:
             request.httpBody = try JSONSerialization.data(withJSONObject: [
                 "model": modelName,
@@ -655,6 +662,15 @@ final class LocalAIClient {
             ["role": "system", "content": systemPrompt],
             ["role": "user", "content": prompt]
         ]
+    }
+
+    /// Models where Ollama accepts `"think": false` to skip the reasoning
+    /// phase. Name-based so non-thinking models never receive the flag
+    /// (older Ollama rejects it for models without thinking support).
+    private static func isThinkingCapableModel(_ modelName: String) -> Bool {
+        let lowered = modelName.lowercased()
+        return ["qwen3", "deepseek-r1", "deepseek-v3", "gpt-oss", "magistral", "-thinking"]
+            .contains { lowered.contains($0) }
     }
 
     private func readOllamaStream(
@@ -683,7 +699,11 @@ final class LocalAIClient {
                let content = message["content"] as? String,
                !content.isEmpty {
                 accumulated += content
-                let cleaned = cleanModelOutput(accumulated, preserveCodeFences: preserveCodeFences)
+                let cleaned = cleanModelOutput(
+                    accumulated,
+                    preserveCodeFences: preserveCodeFences,
+                    isPartial: true
+                )
                 if !cleaned.isEmpty {
                     await onChunk(cleaned)
                 }
@@ -732,7 +752,11 @@ final class LocalAIClient {
             }
 
             accumulated += content
-            let cleaned = cleanModelOutput(accumulated, preserveCodeFences: preserveCodeFences)
+            let cleaned = cleanModelOutput(
+                accumulated,
+                preserveCodeFences: preserveCodeFences,
+                isPartial: true
+            )
             if !cleaned.isEmpty {
                 await onChunk(cleaned)
             }
@@ -844,7 +868,11 @@ final class LocalAIClient {
         return content
     }
 
-    private func cleanModelOutput(_ raw: String, preserveCodeFences: Bool = false) -> String {
+    private func cleanModelOutput(
+        _ raw: String,
+        preserveCodeFences: Bool = false,
+        isPartial: Bool = false
+    ) -> String {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if !preserveCodeFences {
             text = strippingSurroundingCodeFence(from: text)
@@ -878,11 +906,55 @@ final class LocalAIClient {
                 didStripPrefix = true
             }
         }
+        text = strippingReasoningPreamble(from: text, isPartial: isPartial)
         if !preserveCodeFences {
             text = strippingSurroundingCodeFence(from: text)
         }
         text = strippingSurroundingQuotes(from: text)
         return text
+    }
+
+    /// Drops leading paragraphs of model self-talk ("好的，用户需要翻译…",
+    /// "Okay, the user wants me to translate…") that some local models emit
+    /// before the actual translation, even with reasoning tags disabled.
+    /// Mid-stream a lone suspicious opening paragraph is held back entirely
+    /// so reasoning never flashes in the popup; in the final output a lone
+    /// paragraph is kept as-is to avoid false positives.
+    private func strippingReasoningPreamble(from raw: String, isPartial: Bool) -> String {
+        var paragraphs = raw.components(separatedBy: "\n\n")
+        var dropped = 0
+        while paragraphs.count > 1, dropped < 3,
+              let first = paragraphs.first,
+              Self.looksLikeReasoningPreamble(first) {
+            paragraphs.removeFirst()
+            dropped += 1
+        }
+        if isPartial, paragraphs.count == 1, let only = paragraphs.first,
+           Self.looksLikeReasoningPreamble(only) {
+            return ""
+        }
+        return paragraphs.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static let reasoningOpeners: [String] = [
+        "好的", "好，", "嗯", "首先", "我来", "让我", "我们", "我先", "用户",
+        "okay", "ok,", "alright", "sure", "let me", "let's", "i will", "i'll",
+        "i need to", "the user"
+    ]
+
+    private static let reasoningMetaWords: [String] = [
+        "翻译", "译文", "译成", "译为", "用户", "原文",
+        "translate", "translation", "the user", "source text", "target language"
+    ]
+
+    private static func looksLikeReasoningPreamble(_ paragraph: String) -> Bool {
+        let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let lowered = trimmed.lowercased()
+        let head = String(lowered.prefix(16))
+        let opensLikeSelfTalk = reasoningOpeners.contains { head.contains($0) }
+        let mentionsTask = reasoningMetaWords.contains { lowered.contains($0) }
+        return opensLikeSelfTalk && mentionsTask
     }
 
     private func removingTag(named tag: String, from raw: String) -> String {
