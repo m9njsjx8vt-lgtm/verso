@@ -1,6 +1,16 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Tabs addressable from outside (verso://settings?tab=writing etc.).
+enum SettingsTab: String, Hashable {
+    case general, languages, personalization, glossary, writing, usage, about
+}
+
+extension Notification.Name {
+    /// Posted with a SettingsTab rawValue as `object` to switch the visible tab.
+    static let versoSelectSettingsTab = Notification.Name("verso.selectSettingsTab")
+}
+
 struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var glossary: Glossary
@@ -24,34 +34,47 @@ struct SettingsView: View {
     @State private var localAIAppLaunchSucceeded: Bool = false
     @State private var skipNextLocalAIBackendChange: Bool = false
     @State private var permissionRefreshID = UUID()
+    @State private var selectedTab: SettingsTab = .general
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             generalTab
                 .tabItem { Label(L10n.tabGeneral, systemImage: "gearshape") }
+                .tag(SettingsTab.general)
 
             languagesTab
                 .tabItem { Label(L10n.tabLanguages, systemImage: "globe") }
+                .tag(SettingsTab.languages)
 
             contextTab
                 .tabItem { Label(L10n.tabPersonalization, systemImage: "person.text.rectangle") }
+                .tag(SettingsTab.personalization)
 
             GlossaryTabView(glossary: glossary)
                 .tabItem { Label(L10n.tabGlossary, systemImage: "book") }
+                .tag(SettingsTab.glossary)
 
             writingTab
                 .tabItem { Label("Writing", systemImage: "checkmark.seal") }
+                .tag(SettingsTab.writing)
 
             usageTab
                 .tabItem { Label(L10n.tabUsage, systemImage: "chart.bar") }
+                .tag(SettingsTab.usage)
 
             aboutTab
                 .tabItem { Label(L10n.tabAbout, systemImage: "info.circle") }
+                .tag(SettingsTab.about)
         }
         .frame(width: 660, height: 560)
         .padding(20)
         .onAppear {
             refreshLocalAIModelsIfUseful()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .versoSelectSettingsTab)) { note in
+            if let raw = note.object as? String, let tab = SettingsTab(rawValue: raw) {
+                selectedTab = tab
+            }
         }
         .onChange(of: settings.translationProvider) { _ in
             resetLocalAITestResult()

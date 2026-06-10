@@ -41,7 +41,7 @@ xcodebuild \
   -configuration "$CONFIGURATION" \
   -destination 'platform=macOS' \
   -derivedDataPath "$DERIVED_DATA_PATH" \
-  "${SIGNING_ARGS[@]}" \
+  ${SIGNING_ARGS[@]+"${SIGNING_ARGS[@]}"} \
   build
 
 if [ ! -d "$APP_BUNDLE" ]; then

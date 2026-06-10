@@ -35,6 +35,11 @@ final class PopupWindow: NSPanel {
         self.standardWindowButton(.zoomButton)?.isHidden = true
         self.level = .floating
         self.isFloatingPanel = true
+        // Show on whatever Space the user triggered the popup from, including
+        // over other apps' fullscreen Spaces (without kicking them out of
+        // fullscreen). Without these flags the panel stays on its birth Space
+        // and macOS switches Spaces to it instead.
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         self.becomesKeyOnlyIfNeeded = false
         self.hidesOnDeactivate = false
         self.isReleasedWhenClosed = false

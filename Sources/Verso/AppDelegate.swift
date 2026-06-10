@@ -347,7 +347,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         case "history": showHistory()
-        case "settings": openSettings()
+        case "settings":
+            openSettings()
+            if let tab = comps.queryItems?.first(where: { $0.name == "tab" })?.value, !tab.isEmpty {
+                // Give the settings window a beat to materialize before switching tabs.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    NotificationCenter.default.post(name: .versoSelectSettingsTab, object: tab)
+                }
+            }
         case "welcome", "onboarding": showOnboarding()
         case "workspace":
             let text = comps.queryItems?.first(where: { $0.name == "text" })?.value
