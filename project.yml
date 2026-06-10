@@ -35,8 +35,8 @@ targets:
       properties:
         LSUIElement: true
         LSMinimumSystemVersion: "13.0"
-        CFBundleShortVersionString: "0.9.0"
-        CFBundleVersion: "13"
+        CFBundleShortVersionString: "0.10.0"
+        CFBundleVersion: "14"
         CFBundleDisplayName: Verso
         CFBundleIconFile: AppIcon
         NSHighResolutionCapable: true
@@ -49,7 +49,7 @@ targets:
         # Sparkle auto-update. Release operations are documented in docs/sparkle-handoff.md
         # and docs/sparkle-setup-todo.md.
         SUFeedURL: "https://m9njsjx8vt-lgtm.github.io/verso/appcast.xml"
-        SUPublicEDKey: "aVgntSFEasAg4ONSz47gO8R3Ir3IUDoJSnO6etS6Q74="
+        SUPublicEDKey: "AKCNvqrXaTm9pxaH2GXfK+c33/oYkW2E/tVadrdIkqQ="
         SUEnableInstallerLauncherService: false
         SUEnableAutomaticChecks: true
         SUScheduledCheckInterval: 86400

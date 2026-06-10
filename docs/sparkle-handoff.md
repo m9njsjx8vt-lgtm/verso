@@ -1,14 +1,23 @@
 # Sparkle 自動アップデート — 運用メモ
 
-Current state (2026-05-31):
+Current state (2026-06-10):
 
 - GitHub repo: `https://github.com/m9njsjx8vt-lgtm/verso` is public.
 - GitHub Pages source: `main:/docs`.
 - Live appcast: `https://m9njsjx8vt-lgtm.github.io/verso/appcast.xml`.
-- Releases `v0.8.0` and `v0.9.0` are publicly downloadable.
-- On this Mac, future distributable builds still need the `Verso Self-Signed`
-  code-signing identity. `xcodegen` is recommended, but the scripts can use the
-  checked-in/generated `Verso.xcodeproj` when it already exists.
+- Releases `v0.8.0`〜`v0.10.0` are publicly downloadable.
+- `Verso Self-Signed` code-signing identity: created on this Mac (2026-06-10),
+  lives in the dedicated keychain `~/Library/Keychains/verso-signing.keychain-db`
+  (registered in the user keychain search list; valid until 2036).
+- Sparkle EdDSA key: **regenerated on this Mac for v0.10.0** (the original key
+  stayed on the old Mac). Private key is in the login keychain AND exported to
+  `~/.local/share/sparkle/private/verso_eddsa_key` (chmod 600) so `sign_update
+  --ed-key-file` works non-interactively. Consequence: installs of v0.9.0 and
+  older cannot auto-update across the key change — install v0.10.0 manually
+  from the DMG once; auto-update works from v0.10.0 onward.
+- `xcodegen` is NOT installed on this Mac; the scripts use the checked-in
+  `Verso.xcodeproj`, so version bumps must be made in BOTH `project.yml` and
+  `Sources/Verso/Generated-Info.plist` (PlistBuddy) until xcodegen is installed.
 
 Verso v0.9.0 時点で Sparkle SPM dependency、Updater、EdDSA公開鍵、
 `SUFeedURL`、GitHub Pages appcast hosting は設定済み。

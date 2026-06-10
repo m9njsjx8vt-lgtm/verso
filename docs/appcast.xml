@@ -11,6 +11,29 @@
       the signature line to copy in. See docs/sparkle-handoff.md.
     -->
     <item>
+      <title>v0.10.0</title>
+      <pubDate>Wed, 10 Jun 2026 03:40:59 -0500</pubDate>
+      <sparkle:version>14</sparkle:version>
+      <sparkle:shortVersionString>0.10.0</sparkle:shortVersionString>
+      <description><![CDATA[
+        <ul>
+          <li>翻訳ポップアップを「言語レンズ」として全面再設計 — 軽量オーバーレイ、refineバー（短く/砕け/丁寧/別案/解説）、Writing Lensパネル（⌘5 添削）</li>
+          <li>Local AI 対応（Ollama / LM Studio）— モデル自動検出、オンボーディング、ストリーミング、オフライン・Gemini障害時の自動フォールバック</li>
+          <li>自分の英文の添削記録（添削して記録 → 弱点トラッキング）</li>
+          <li>ワークスペース強化 — 履歴から元アプリへ直接ペースト、結果のステイル管理</li>
+          <li>OCR 改善 — 画面収録権限の導線、領域選択クラッシュ修正、対象ウィンドウ選択</li>
+          <li>APIキー保管の刷新とポップアップ復旧などの安定性修正</li>
+          <li>新アプリアイコン</li>
+          <li>注意: Sparkle署名鍵を更新したため v0.9.0 以前からの自動アップデートは効きません。このバージョンは DMG から手動インストールしてください。</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/m9njsjx8vt-lgtm/verso/releases/download/v0.10.0/Verso-v0.10.0.dmg"
+        sparkle:edSignature="liXeizlI61IRQ4mA/TH8kdI9cWLGASb0EoTYS6WbTWlODOE1f0Aea2W/Z7emRompMfkC0Q9QwCipmZw+TAItCg=="
+        length="3840848"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>v0.9.0</title>
       <pubDate>Thu, 14 May 2026 22:35:34 +0900</pubDate>
       <sparkle:version>13</sparkle:version>
