@@ -29,6 +29,8 @@ final class PopupViewModel: ObservableObject {
     @Published var writingSummaries: [WritingMistakeSummary]
     @Published var writingObservationCount: Int
 
+    let deepLConfigured: Bool
+
     // --- Grammar chat state ---
     @Published var chatMessages: [ChatMessage] = []
     @Published var chatInput: String = ""
@@ -92,6 +94,7 @@ final class PopupViewModel: ObservableObject {
         self.originalText = originalText
         self.fromLang = fromLang
         self.toLang = toLang
+        self.deepLConfigured = deepLConfigured
         self.deepLState = deepLConfigured && showDeepLResult ? .loading : .notConfigured
         self.stayOpen = stayOpen
         self.privacyMode = privacyMode
@@ -153,6 +156,11 @@ final class PopupViewModel: ObservableObject {
     var canUndo: Bool { !undoStack.isEmpty && !isRefining }
     var canCorrectOwnWriting: Bool { fromLang == "EN" }
 
+    var isAILoading: Bool {
+        if case .loading = geminiState { return true }
+        return false
+    }
+
     func showToast(_ message: String, duration: TimeInterval = 2.5) {
         toast = message
         Task { @MainActor [weak self] in
@@ -191,7 +199,7 @@ struct PopupView: View {
                         if viewModel.showAIPanel && viewModel.isChatExpanded && viewModel.isGeminiOk { chatPanel }
                         actionBar
                     }
-                    .frame(minWidth: 500, maxWidth: .infinity, alignment: .topLeading)
+                    .frame(minWidth: 440, maxWidth: .infinity, alignment: .topLeading)
 
                     Divider()
                         .frame(maxHeight: .infinity)
@@ -200,7 +208,9 @@ struct PopupView: View {
                         .frame(width: 240, alignment: .top)
                 }
             }
-            .padding(16)
+            .padding(.top, 12)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
 
             if let toast = viewModel.toast {
                 Text(toast).font(.callout).foregroundColor(.white)
@@ -212,19 +222,19 @@ struct PopupView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.toast)
         .animation(.easeInOut(duration: 0.2), value: viewModel.isChatExpanded)
-        .frame(minWidth: 760, idealWidth: 920, maxWidth: .infinity,
-               minHeight: 420,
-               idealHeight: viewModel.isChatExpanded ? 780 : idealPopupHeight,
+        .frame(minWidth: 740, idealWidth: 900, maxWidth: .infinity,
+               minHeight: 400,
+               idealHeight: viewModel.isChatExpanded ? 740 : idealPopupHeight,
                maxHeight: .infinity)
         .background(keyboardShortcuts)
     }
 
     private var idealPopupHeight: CGFloat {
         switch (viewModel.showDeepLPanel, viewModel.showAIPanel) {
-        case (true, true): return 590
-        case (true, false): return 480
-        case (false, true): return 540
-        case (false, false): return 420
+        case (true, true): return 560
+        case (true, false): return 460
+        case (false, true): return 520
+        case (false, false): return 400
         }
     }
 
@@ -255,6 +265,7 @@ struct PopupView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text(viewModel.fromLang).font(.caption).fontWeight(.semibold).tracking(1.0).foregroundColor(.secondary)
+                .padding(.leading, 28)
             Image(systemName: "arrow.right").font(.caption2).foregroundColor(.secondary)
 
             Menu {
@@ -294,7 +305,7 @@ struct PopupView: View {
             .buttonStyle(.borderless)
             .help(viewModel.stayOpen ? "📌 Pinned (会話モード)" : "Pin to keep open")
 
-            Text(viewModel.stayOpen ? "📌 会話モード  •  Esc で閉じる" : "⤡ ドラッグで拡縮  •  Esc で閉じる")
+            Text(viewModel.stayOpen ? "📌 会話モード" : "Esc で閉じる")
                 .font(.caption2).foregroundColor(.secondary)
         }
     }
@@ -327,9 +338,9 @@ struct PopupView: View {
     private var primaryResultTitle: String {
         let provider = viewModel.showAIPanel ? viewModel.aiProviderTitle : "DeepL"
         if viewModel.isRefining {
-            return "Best Result  •  \(provider)  •  Working"
+            return "\(provider)  •  Working"
         }
-        return "Best Result  •  \(provider)"
+        return provider
     }
 
     private var primaryResultIcon: String {
@@ -473,7 +484,8 @@ struct PopupView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .disabled(!viewModel.showAIPanel || !viewModel.canCorrectOwnWriting || viewModel.isRefining)
+            .disabled(!viewModel.showAIPanel || !viewModel.canCorrectOwnWriting
+                      || viewModel.isRefining || viewModel.isAILoading)
             .help("自分が書いた英文だけを直して、ミス傾向に追加します")
 
             Text(writingActionHint)
@@ -612,7 +624,7 @@ struct PopupView: View {
             Label(viewModel.privacyMode ? "履歴保存なし" : "履歴保存あり", systemImage: viewModel.privacyMode ? "lock.fill" : "clock.arrow.circlepath")
                 .font(.caption2)
                 .foregroundColor(.secondary)
-            if !viewModel.showDeepLPanel {
+            if viewModel.deepLConfigured && !viewModel.showDeepLPanel {
                 Label("DeepL非表示", systemImage: "eye.slash")
                     .font(.caption2)
                     .foregroundColor(.secondary)
@@ -644,42 +656,58 @@ struct PopupView: View {
         HStack(spacing: 6) {
             if viewModel.isRefining { ProgressView().controlSize(.small) }
             Button { viewModel.onRefine("Make the translation shorter and more concise while preserving meaning.") }
-                label: { Label("短く", systemImage: "arrow.down.right.and.arrow.up.left") }.help("⌘1 — shorter")
+                label: { Label("短く", systemImage: "arrow.down.right.and.arrow.up.left").fixedSize() }
+                .help("⌘1 — shorter")
             Button { viewModel.onRefine("Make the translation more casual and conversational.") }
-                label: { Label("砕け", systemImage: "bubble.left") }.help("⌘2 — casual")
+                label: { Label("砕け", systemImage: "bubble.left").fixedSize() }
+                .help("⌘2 — casual")
             Button { viewModel.onRefine("Make the translation more formal and polite.") }
-                label: { Label("丁寧", systemImage: "person.crop.circle.badge.checkmark") }.help("⌘3 — formal")
+                label: { Label("丁寧", systemImage: "person.crop.circle.badge.checkmark").fixedSize() }
+                .help("⌘3 — formal")
             Button { viewModel.onRefine("Provide an alternative translation with different word choices.") }
-                label: { Label("別案", systemImage: "arrow.triangle.2.circlepath") }.help("⌘4 — alternative")
-            if viewModel.canCorrectOwnWriting {
-                Button { viewModel.onCorrectOwnWriting() }
-                    label: { Label("添削", systemImage: "checkmark.seal") }
-                    .help("⌘5 — 自分で書いた英文を直してミス傾向を記録")
-            }
-            if viewModel.allowsCloudPro {
-                Button { viewModel.onTryWithPro() }
-                    label: { Label("Pro", systemImage: "star.fill") }.help("Try with Gemini 2.5 Pro")
-            }
-            if viewModel.toLang == "JA" {
-                Button { viewModel.onFurigana() }
-                    label: { Label("ふりがな", systemImage: "character.book.closed.fill") }.help("漢字に読み仮名を付ける")
-            }
+                label: { Label("別案", systemImage: "arrow.triangle.2.circlepath").fixedSize() }
+                .help("⌘4 — alternative")
             Button {
                 viewModel.isChatExpanded.toggle()
             } label: {
-                Label(viewModel.isChatExpanded ? "閉じる" : "解説",
+                Label("解説",
                       systemImage: viewModel.isChatExpanded ? "bubble.left.and.bubble.right.fill"
                                                             : "bubble.left.and.bubble.right")
+                    .fixedSize()
             }
             .help("文法・ニュアンスを質問する")
             if viewModel.canUndo {
-                Button { viewModel.onUndo() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }.help("⌘Z")
+                Button { viewModel.onUndo() }
+                    label: { Label("Undo", systemImage: "arrow.uturn.backward").labelStyle(.iconOnly) }
+                    .help("元に戻す (⌘Z)")
             }
+
             Spacer()
+
             Button {
                 newTerm = ""; newTrans = ""; newPreserve = false; showGlossaryPopover = true
-            } label: { Label("用語追加", systemImage: "book.closed.fill") }
+            } label: { Label("用語追加", systemImage: "book.closed.fill").labelStyle(.iconOnly) }
+                .help("用語をGlossaryに追加")
                 .popover(isPresented: $showGlossaryPopover, arrowEdge: .top) { addGlossaryPopover }
+
+            if viewModel.allowsCloudPro || viewModel.toLang == "JA" {
+                Menu {
+                    if viewModel.allowsCloudPro {
+                        Button { viewModel.onTryWithPro() }
+                            label: { Label("Proモデルで再翻訳", systemImage: "star.fill") }
+                    }
+                    if viewModel.toLang == "JA" {
+                        Button { viewModel.onFurigana() }
+                            label: { Label("ふりがなを付ける", systemImage: "character.book.closed.fill") }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("その他の操作")
+            }
         }
         .buttonStyle(.bordered).controlSize(.small)
         .disabled(viewModel.isRefining)

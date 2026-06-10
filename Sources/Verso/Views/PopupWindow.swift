@@ -9,11 +9,11 @@ final class PopupWindow: NSPanel {
         self.onResignKey = onResignKey
 
         // Restore last user-resized size if available, else use defaults
-        let defaultSize = NSSize(width: 920, height: preferredHeight)
+        let defaultSize = NSSize(width: 900, height: preferredHeight)
         let restoredSize: NSSize
         if let dict = UserDefaults.standard.dictionary(forKey: Self.sizeKey),
            let w = dict["w"] as? CGFloat, let h = dict["h"] as? CGFloat,
-           w >= 760, h >= 420 {
+           w >= 740, h >= 400 {
             restoredSize = NSSize(width: w, height: h)
         } else {
             restoredSize = defaultSize
@@ -21,14 +21,18 @@ final class PopupWindow: NSPanel {
 
         super.init(
             contentRect: NSRect(origin: .zero, size: restoredSize),
-            // Standard panel chrome (no .utilityWindow) so the green zoom button
-            // appears and edge-drag resize is fully discoverable.
-            styleMask: [.titled, .closable, .resizable],
+            // Keep .titled + .resizable so edge-drag resize stays discoverable,
+            // but hide the title strip for a light overlay feel.
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        contentMinSize = NSSize(width: 760, height: 420)
+        contentMinSize = NSSize(width: 740, height: 400)
         self.title = "翻訳"
+        self.titleVisibility = .hidden
+        self.titlebarAppearsTransparent = true
+        self.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        self.standardWindowButton(.zoomButton)?.isHidden = true
         self.level = .floating
         self.isFloatingPanel = true
         self.becomesKeyOnlyIfNeeded = false
